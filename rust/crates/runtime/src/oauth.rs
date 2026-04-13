@@ -9,6 +9,7 @@ use sha2::{Digest, Sha256};
 
 use crate::config::OAuthConfig;
 
+/// Persisted OAuth access token bundle used by the CLI.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct OAuthTokenSet {
     pub access_token: String,
@@ -17,6 +18,7 @@ pub struct OAuthTokenSet {
     pub scopes: Vec<String>,
 }
 
+/// PKCE verifier/challenge pair generated for an OAuth authorization flow.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PkceCodePair {
     pub verifier: String,
@@ -24,6 +26,7 @@ pub struct PkceCodePair {
     pub challenge_method: PkceChallengeMethod,
 }
 
+/// Challenge algorithms supported by the local PKCE helpers.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PkceChallengeMethod {
     S256,
@@ -38,6 +41,7 @@ impl PkceChallengeMethod {
     }
 }
 
+/// Parameters needed to build an authorization URL for browser-based login.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OAuthAuthorizationRequest {
     pub authorize_url: String,
@@ -50,6 +54,7 @@ pub struct OAuthAuthorizationRequest {
     pub extra_params: BTreeMap<String, String>,
 }
 
+/// Request body for exchanging an OAuth authorization code for tokens.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OAuthTokenExchangeRequest {
     pub grant_type: &'static str,
@@ -60,6 +65,7 @@ pub struct OAuthTokenExchangeRequest {
     pub state: String,
 }
 
+/// Request body for refreshing an existing OAuth token set.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OAuthRefreshRequest {
     pub grant_type: &'static str,
@@ -68,6 +74,7 @@ pub struct OAuthRefreshRequest {
     pub scopes: Vec<String>,
 }
 
+/// Parsed query parameters returned to the local OAuth callback endpoint.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OAuthCallbackParams {
     pub code: Option<String>,
@@ -328,7 +335,14 @@ fn credentials_home_dir() -> io::Result<PathBuf> {
         return Ok(PathBuf::from(path));
     }
     let home = std::env::var_os("HOME")
-        .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "HOME is not set"))?;
+        .or_else(|| std::env::var_os("USERPROFILE"))
+        .ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::NotFound,
+                "HOME is not set (on Windows, set USERPROFILE or HOME, \
+                 or use CLAW_CONFIG_HOME to point directly at the config directory)",
+            )
+        })?;
     Ok(PathBuf::from(home).join(".claw"))
 }
 
@@ -442,7 +456,7 @@ fn decode_hex(byte: u8) -> Result<u8, String> {
         b'0'..=b'9' => Ok(byte - b'0'),
         b'a'..=b'f' => Ok(byte - b'a' + 10),
         b'A'..=b'F' => Ok(byte - b'A' + 10),
-        _ => Err(format!("invalid percent-encoding byte: {byte}")),
+        _ => Err(format!("invalid percent byte: {byte}")),
     }
 }
 

@@ -9,6 +9,41 @@ use regex::RegexBuilder;
 use serde::{Deserialize, Serialize};
 use walkdir::WalkDir;
 
+/// Maximum file size that can be read (10 MB).
+const MAX_READ_SIZE: u64 = 10 * 1024 * 1024;
+
+/// Maximum file size that can be written (10 MB).
+const MAX_WRITE_SIZE: usize = 10 * 1024 * 1024;
+
+/// Check whether a file appears to contain binary content by examining
+/// the first chunk for NUL bytes.
+fn is_binary_file(path: &Path) -> io::Result<bool> {
+    use std::io::Read;
+    let mut file = fs::File::open(path)?;
+    let mut buffer = [0u8; 8192];
+    let bytes_read = file.read(&mut buffer)?;
+    Ok(buffer[..bytes_read].contains(&0))
+}
+
+/// Validate that a resolved path stays within the given workspace root.
+/// Returns the canonical path on success, or an error if the path escapes
+/// the workspace boundary (e.g. via `../` traversal or symlink).
+#[allow(dead_code)]
+fn validate_workspace_boundary(resolved: &Path, workspace_root: &Path) -> io::Result<()> {
+    if !resolved.starts_with(workspace_root) {
+        return Err(io::Error::new(
+            io::ErrorKind::PermissionDenied,
+            format!(
+                "path {} escapes workspace boundary {}",
+                resolved.display(),
+                workspace_root.display()
+            ),
+        ));
+    }
+    Ok(())
+}
+
+/// Text payload returned by file-reading operations.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct TextFilePayload {
     #[serde(rename = "filePath")]
@@ -22,6 +57,7 @@ pub struct TextFilePayload {
     pub total_lines: usize,
 }
 
+/// Output envelope for the `read_file` tool.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ReadFileOutput {
     #[serde(rename = "type")]
@@ -29,6 +65,7 @@ pub struct ReadFileOutput {
     pub file: TextFilePayload,
 }
 
+/// Structured patch hunk emitted by write and edit operations.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct StructuredPatchHunk {
     #[serde(rename = "oldStart")]
@@ -42,6 +79,7 @@ pub struct StructuredPatchHunk {
     pub lines: Vec<String>,
 }
 
+/// Output envelope for full-file write operations.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct WriteFileOutput {
     #[serde(rename = "type")]
@@ -57,6 +95,7 @@ pub struct WriteFileOutput {
     pub git_diff: Option<serde_json::Value>,
 }
 
+/// Output envelope for targeted string-replacement edits.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct EditFileOutput {
     #[serde(rename = "filePath")]
@@ -77,6 +116,7 @@ pub struct EditFileOutput {
     pub git_diff: Option<serde_json::Value>,
 }
 
+/// Result of a glob-based filename search.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct GlobSearchOutput {
     #[serde(rename = "durationMs")]
@@ -87,6 +127,7 @@ pub struct GlobSearchOutput {
     pub truncated: bool,
 }
 
+/// Parameters accepted by the grep-style search tool.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct GrepSearchInput {
     pub pattern: String,
@@ -112,6 +153,7 @@ pub struct GrepSearchInput {
     pub multiline: Option<bool>,
 }
 
+/// Result payload returned by the grep-style search tool.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct GrepSearchOutput {
     pub mode: Option<String>,
@@ -129,12 +171,35 @@ pub struct GrepSearchOutput {
     pub applied_offset: Option<usize>,
 }
 
+/// Reads a text file and returns a line-windowed payload.
 pub fn read_file(
     path: &str,
     offset: Option<usize>,
     limit: Option<usize>,
 ) -> io::Result<ReadFileOutput> {
     let absolute_path = normalize_path(path)?;
+
+    // Check file size before reading
+    let metadata = fs::metadata(&absolute_path)?;
+    if metadata.len() > MAX_READ_SIZE {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!(
+                "file is too large ({} bytes, max {} bytes)",
+                metadata.len(),
+                MAX_READ_SIZE
+            ),
+        ));
+    }
+
+    // Detect binary files
+    if is_binary_file(&absolute_path)? {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "file appears to be binary",
+        ));
+    }
+
     let content = fs::read_to_string(&absolute_path)?;
     let lines: Vec<&str> = content.lines().collect();
     let start_index = offset.unwrap_or(0).min(lines.len());
@@ -155,7 +220,19 @@ pub fn read_file(
     })
 }
 
+/// Replaces a file's contents and returns patch metadata.
 pub fn write_file(path: &str, content: &str) -> io::Result<WriteFileOutput> {
+    if content.len() > MAX_WRITE_SIZE {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!(
+                "content is too large ({} bytes, max {} bytes)",
+                content.len(),
+                MAX_WRITE_SIZE
+            ),
+        ));
+    }
+
     let absolute_path = normalize_path_allow_missing(path)?;
     let original_file = fs::read_to_string(&absolute_path).ok();
     if let Some(parent) = absolute_path.parent() {
@@ -177,6 +254,7 @@ pub fn write_file(path: &str, content: &str) -> io::Result<WriteFileOutput> {
     })
 }
 
+/// Performs an in-file string replacement and returns patch metadata.
 pub fn edit_file(
     path: &str,
     old_string: &str,
@@ -217,6 +295,7 @@ pub fn edit_file(
     })
 }
 
+/// Expands a glob pattern and returns matching filenames.
 pub fn glob_search(pattern: &str, path: Option<&str>) -> io::Result<GlobSearchOutput> {
     let started = Instant::now();
     let base_dir = path
@@ -229,12 +308,20 @@ pub fn glob_search(pattern: &str, path: Option<&str>) -> io::Result<GlobSearchOu
         base_dir.join(pattern).to_string_lossy().into_owned()
     };
 
+    // The `glob` crate does not support brace expansion ({a,b,c}).
+    // Expand braces into multiple patterns so patterns like
+    // `Assets/**/*.{cs,uxml,uss}` work correctly.
+    let expanded = expand_braces(&search_pattern);
+
+    let mut seen = std::collections::HashSet::new();
     let mut matches = Vec::new();
-    let entries = glob::glob(&search_pattern)
-        .map_err(|error| io::Error::new(io::ErrorKind::InvalidInput, error.to_string()))?;
-    for entry in entries.flatten() {
-        if entry.is_file() {
-            matches.push(entry);
+    for pat in &expanded {
+        let entries = glob::glob(pat)
+            .map_err(|error| io::Error::new(io::ErrorKind::InvalidInput, error.to_string()))?;
+        for entry in entries.flatten() {
+            if entry.is_file() && seen.insert(entry.clone()) {
+                matches.push(entry);
+            }
         }
     }
 
@@ -260,6 +347,7 @@ pub fn glob_search(pattern: &str, path: Option<&str>) -> io::Result<GlobSearchOu
     })
 }
 
+/// Runs a regex search over workspace files with optional context lines.
 pub fn grep_search(input: &GrepSearchInput) -> io::Result<GrepSearchOutput> {
     let base_path = input
         .path
@@ -477,18 +565,105 @@ fn normalize_path_allow_missing(path: &str) -> io::Result<PathBuf> {
     Ok(candidate)
 }
 
+/// Read a file with workspace boundary enforcement.
+#[allow(dead_code)]
+pub fn read_file_in_workspace(
+    path: &str,
+    offset: Option<usize>,
+    limit: Option<usize>,
+    workspace_root: &Path,
+) -> io::Result<ReadFileOutput> {
+    let absolute_path = normalize_path(path)?;
+    let canonical_root = workspace_root
+        .canonicalize()
+        .unwrap_or_else(|_| workspace_root.to_path_buf());
+    validate_workspace_boundary(&absolute_path, &canonical_root)?;
+    read_file(path, offset, limit)
+}
+
+/// Write a file with workspace boundary enforcement.
+#[allow(dead_code)]
+pub fn write_file_in_workspace(
+    path: &str,
+    content: &str,
+    workspace_root: &Path,
+) -> io::Result<WriteFileOutput> {
+    let absolute_path = normalize_path_allow_missing(path)?;
+    let canonical_root = workspace_root
+        .canonicalize()
+        .unwrap_or_else(|_| workspace_root.to_path_buf());
+    validate_workspace_boundary(&absolute_path, &canonical_root)?;
+    write_file(path, content)
+}
+
+/// Edit a file with workspace boundary enforcement.
+#[allow(dead_code)]
+pub fn edit_file_in_workspace(
+    path: &str,
+    old_string: &str,
+    new_string: &str,
+    replace_all: bool,
+    workspace_root: &Path,
+) -> io::Result<EditFileOutput> {
+    let absolute_path = normalize_path(path)?;
+    let canonical_root = workspace_root
+        .canonicalize()
+        .unwrap_or_else(|_| workspace_root.to_path_buf());
+    validate_workspace_boundary(&absolute_path, &canonical_root)?;
+    edit_file(path, old_string, new_string, replace_all)
+}
+
+/// Check whether a path is a symlink that resolves outside the workspace.
+#[allow(dead_code)]
+pub fn is_symlink_escape(path: &Path, workspace_root: &Path) -> io::Result<bool> {
+    let metadata = fs::symlink_metadata(path)?;
+    if !metadata.is_symlink() {
+        return Ok(false);
+    }
+    let resolved = path.canonicalize()?;
+    let canonical_root = workspace_root
+        .canonicalize()
+        .unwrap_or_else(|_| workspace_root.to_path_buf());
+    Ok(!resolved.starts_with(&canonical_root))
+}
+
+/// Expand shell-style brace groups in a glob pattern.
+///
+/// Handles one level of braces: `foo.{a,b,c}` → `["foo.a", "foo.b", "foo.c"]`.
+/// Nested braces are not expanded (uncommon in practice).
+/// Patterns without braces pass through unchanged.
+fn expand_braces(pattern: &str) -> Vec<String> {
+    let Some(open) = pattern.find('{') else {
+        return vec![pattern.to_owned()];
+    };
+    let Some(close) = pattern[open..].find('}').map(|i| open + i) else {
+        // Unmatched brace — treat as literal.
+        return vec![pattern.to_owned()];
+    };
+    let prefix = &pattern[..open];
+    let suffix = &pattern[close + 1..];
+    let alternatives = &pattern[open + 1..close];
+    alternatives
+        .split(',')
+        .flat_map(|alt| expand_braces(&format!("{prefix}{alt}{suffix}")))
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use std::time::{SystemTime, UNIX_EPOCH};
 
-    use super::{edit_file, glob_search, grep_search, read_file, write_file, GrepSearchInput};
+    use super::{
+        edit_file, expand_braces, glob_search, grep_search, is_symlink_escape, read_file,
+        read_file_in_workspace, write_file, GrepSearchInput, MAX_WRITE_SIZE,
+    };
 
     fn temp_path(name: &str) -> std::path::PathBuf {
         let unique = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .expect("time should move forward")
             .as_nanos();
-        std::env::temp_dir().join(format!("claw-native-{name}-{unique}"))
+        std::env::temp_dir().join(format!("clawd-native-{name}-{unique}"))
     }
 
     #[test]
@@ -511,6 +686,73 @@ mod tests {
         let output = edit_file(path.to_string_lossy().as_ref(), "alpha", "omega", true)
             .expect("edit should succeed");
         assert!(output.replace_all);
+    }
+
+    #[test]
+    fn rejects_binary_files() {
+        let path = temp_path("binary-test.bin");
+        std::fs::write(&path, b"\x00\x01\x02\x03binary content").expect("write should succeed");
+        let result = read_file(path.to_string_lossy().as_ref(), None, None);
+        assert!(result.is_err());
+        let error = result.unwrap_err();
+        assert_eq!(error.kind(), std::io::ErrorKind::InvalidData);
+        assert!(error.to_string().contains("binary"));
+    }
+
+    #[test]
+    fn rejects_oversized_writes() {
+        let path = temp_path("oversize-write.txt");
+        let huge = "x".repeat(MAX_WRITE_SIZE + 1);
+        let result = write_file(path.to_string_lossy().as_ref(), &huge);
+        assert!(result.is_err());
+        let error = result.unwrap_err();
+        assert_eq!(error.kind(), std::io::ErrorKind::InvalidData);
+        assert!(error.to_string().contains("too large"));
+    }
+
+    #[test]
+    fn enforces_workspace_boundary() {
+        let workspace = temp_path("workspace-boundary");
+        std::fs::create_dir_all(&workspace).expect("workspace dir should be created");
+        let inside = workspace.join("inside.txt");
+        write_file(inside.to_string_lossy().as_ref(), "safe content")
+            .expect("write inside workspace should succeed");
+
+        // Reading inside workspace should succeed
+        let result =
+            read_file_in_workspace(inside.to_string_lossy().as_ref(), None, None, &workspace);
+        assert!(result.is_ok());
+
+        // Reading outside workspace should fail
+        let outside = temp_path("outside-boundary.txt");
+        write_file(outside.to_string_lossy().as_ref(), "unsafe content")
+            .expect("write outside should succeed");
+        let result =
+            read_file_in_workspace(outside.to_string_lossy().as_ref(), None, None, &workspace);
+        assert!(result.is_err());
+        let error = result.unwrap_err();
+        assert_eq!(error.kind(), std::io::ErrorKind::PermissionDenied);
+        assert!(error.to_string().contains("escapes workspace"));
+    }
+
+    #[test]
+    fn detects_symlink_escape() {
+        let workspace = temp_path("symlink-workspace");
+        std::fs::create_dir_all(&workspace).expect("workspace dir should be created");
+        let outside = temp_path("symlink-target.txt");
+        std::fs::write(&outside, "target content").expect("target should write");
+
+        let link_path = workspace.join("escape-link.txt");
+        #[cfg(unix)]
+        {
+            std::os::unix::fs::symlink(&outside, &link_path).expect("symlink should create");
+            assert!(is_symlink_escape(&link_path, &workspace).expect("check should succeed"));
+        }
+
+        // Non-symlink file should not be an escape
+        let normal = workspace.join("normal.txt");
+        std::fs::write(&normal, "normal content").expect("normal file should write");
+        assert!(!is_symlink_escape(&normal, &workspace).expect("check should succeed"));
     }
 
     #[test]
@@ -546,5 +788,52 @@ mod tests {
         })
         .expect("grep should succeed");
         assert!(grep_output.content.unwrap_or_default().contains("hello"));
+    }
+
+    #[test]
+    fn expand_braces_no_braces() {
+        assert_eq!(expand_braces("*.rs"), vec!["*.rs"]);
+    }
+
+    #[test]
+    fn expand_braces_single_group() {
+        let mut result = expand_braces("Assets/**/*.{cs,uxml,uss}");
+        result.sort();
+        assert_eq!(
+            result,
+            vec!["Assets/**/*.cs", "Assets/**/*.uss", "Assets/**/*.uxml",]
+        );
+    }
+
+    #[test]
+    fn expand_braces_nested() {
+        let mut result = expand_braces("src/{a,b}.{rs,toml}");
+        result.sort();
+        assert_eq!(
+            result,
+            vec!["src/a.rs", "src/a.toml", "src/b.rs", "src/b.toml"]
+        );
+    }
+
+    #[test]
+    fn expand_braces_unmatched() {
+        assert_eq!(expand_braces("foo.{bar"), vec!["foo.{bar"]);
+    }
+
+    #[test]
+    fn glob_search_with_braces_finds_files() {
+        let dir = temp_path("glob-braces");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("a.rs"), "fn main() {}").unwrap();
+        std::fs::write(dir.join("b.toml"), "[package]").unwrap();
+        std::fs::write(dir.join("c.txt"), "hello").unwrap();
+
+        let result =
+            glob_search("*.{rs,toml}", Some(dir.to_str().unwrap())).expect("glob should succeed");
+        assert_eq!(
+            result.num_files, 2,
+            "should match .rs and .toml but not .txt"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

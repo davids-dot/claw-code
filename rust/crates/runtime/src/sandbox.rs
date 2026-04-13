@@ -161,7 +161,7 @@ pub fn resolve_sandbox_status(config: &SandboxConfig, cwd: &Path) -> SandboxStat
 #[must_use]
 pub fn resolve_sandbox_status_for_request(request: &SandboxRequest, cwd: &Path) -> SandboxStatus {
     let container = detect_container_environment();
-    let namespace_supported = cfg!(target_os = "linux") && command_exists("unshare");
+    let namespace_supported = cfg!(target_os = "linux") && unshare_user_namespace_works();
     let network_supported = namespace_supported;
     let filesystem_active =
         request.enabled && request.filesystem_mode != FilesystemIsolationMode::Off;
@@ -242,11 +242,11 @@ pub fn build_linux_sandbox_command(
         ("HOME".to_string(), sandbox_home.display().to_string()),
         ("TMPDIR".to_string(), sandbox_tmp.display().to_string()),
         (
-            "CLAW_SANDBOX_FILESYSTEM_MODE".to_string(),
+            "CLAWD_SANDBOX_FILESYSTEM_MODE".to_string(),
             status.filesystem_mode.as_str().to_string(),
         ),
         (
-            "CLAW_SANDBOX_ALLOWED_MOUNTS".to_string(),
+            "CLAWD_SANDBOX_ALLOWED_MOUNTS".to_string(),
             status.allowed_mounts.join(":"),
         ),
     ];
@@ -280,6 +280,27 @@ fn normalize_mounts(mounts: &[String], cwd: &Path) -> Vec<String> {
 fn command_exists(command: &str) -> bool {
     env::var_os("PATH")
         .is_some_and(|paths| env::split_paths(&paths).any(|path| path.join(command).exists()))
+}
+
+/// Check whether `unshare --user` actually works on this system.
+/// On some CI environments (e.g. GitHub Actions), the binary exists but
+/// user namespaces are restricted, causing silent failures.
+fn unshare_user_namespace_works() -> bool {
+    use std::sync::OnceLock;
+    static RESULT: OnceLock<bool> = OnceLock::new();
+    *RESULT.get_or_init(|| {
+        if !command_exists("unshare") {
+            return false;
+        }
+        std::process::Command::new("unshare")
+            .args(["--user", "--map-root-user", "true"])
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+            .map(|s| s.success())
+            .unwrap_or(false)
+    })
 }
 
 #[cfg(test)]

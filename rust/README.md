@@ -1,122 +1,215 @@
-# Claw Code
+# 🦞 Claw Code — Rust Implementation
 
-Claw Code is a local coding-agent CLI implemented in safe Rust. It is **Claude Code inspired** and developed as a **clean-room implementation**: it aims for a strong local agent experience, but it is **not** a direct port or copy of Claude Code.
+A high-performance Rust rewrite of the Claw Code CLI agent harness. Built for speed, safety, and native tool execution.
 
-The Rust workspace is the current main product surface. The `claw` binary provides interactive sessions, one-shot prompts, workspace-aware tools, local agent workflows, and plugin-capable operation from a single workspace.
+For a task-oriented guide with copy/paste examples, see [`../USAGE.md`](../USAGE.md).
 
-## Current status
-
-- **Version:** `0.1.0`
-- **Release stage:** initial public release, source-build distribution
-- **Primary implementation:** Rust workspace in this repository
-- **Platform focus:** macOS and Linux developer workstations
-
-## Install, build, and run
-
-### Prerequisites
-
-- Rust stable toolchain
-- Cargo
-- Provider credentials for the model you want to use
-
-### Authentication
-
-Anthropic-compatible models:
+## Quick Start
 
 ```bash
-export ANTHROPIC_API_KEY="..."
-# Optional when using a compatible endpoint
-export ANTHROPIC_BASE_URL="https://api.anthropic.com"
+# Inspect available commands
+cd rust/
+cargo run -p rusty-claude-cli -- --help
+
+# Build the workspace
+cargo build --workspace
+
+# Run the interactive REPL
+cargo run -p rusty-claude-cli -- --model claude-opus-4-6
+
+# One-shot prompt
+cargo run -p rusty-claude-cli -- prompt "explain this codebase"
+
+# JSON output for automation
+cargo run -p rusty-claude-cli -- --output-format json prompt "summarize src/main.rs"
 ```
 
-Grok models:
+## Configuration
+
+Set your API credentials:
 
 ```bash
-export XAI_API_KEY="..."
-# Optional when using a compatible endpoint
-export XAI_BASE_URL="https://api.x.ai"
+export ANTHROPIC_API_KEY="sk-ant-..."
+# Or use a proxy
+export ANTHROPIC_BASE_URL="https://your-proxy.com"
 ```
 
-OAuth login is also available:
+Or provide an OAuth bearer token directly:
 
 ```bash
-cargo run --bin claw -- login
+export ANTHROPIC_AUTH_TOKEN="anthropic-oauth-or-proxy-bearer-token"
 ```
 
-### Install locally
+## Mock parity harness
+
+The workspace now includes a deterministic Anthropic-compatible mock service and a clean-environment CLI harness for end-to-end parity checks.
 
 ```bash
-cargo install --path crates/claw-cli --locked
+cd rust/
+
+# Run the scripted clean-environment harness
+./scripts/run_mock_parity_harness.sh
+
+# Or start the mock service manually for ad hoc CLI runs
+cargo run -p mock-anthropic-service -- --bind 127.0.0.1:0
 ```
 
-### Build from source
+Harness coverage:
+
+- `streaming_text`
+- `read_file_roundtrip`
+- `grep_chunk_assembly`
+- `write_file_allowed`
+- `write_file_denied`
+- `multi_tool_turn_roundtrip`
+- `bash_stdout_roundtrip`
+- `bash_permission_prompt_approved`
+- `bash_permission_prompt_denied`
+- `plugin_tool_roundtrip`
+
+Primary artifacts:
+
+- `crates/mock-anthropic-service/` — reusable mock Anthropic-compatible service
+- `crates/rusty-claude-cli/tests/mock_parity_harness.rs` — clean-env CLI harness
+- `scripts/run_mock_parity_harness.sh` — reproducible wrapper
+- `scripts/run_mock_parity_diff.py` — scenario checklist + PARITY mapping runner
+- `mock_parity_scenarios.json` — scenario-to-PARITY manifest
+
+## Features
+
+| Feature | Status |
+|---------|--------|
+| Anthropic / OpenAI-compatible provider flows + streaming | ✅ |
+| Direct bearer-token auth via `ANTHROPIC_AUTH_TOKEN` | ✅ |
+| Interactive REPL (rustyline) | ✅ |
+| Tool system (bash, read, write, edit, grep, glob) | ✅ |
+| Web tools (search, fetch) | ✅ |
+| Sub-agent / agent surfaces | ✅ |
+| Todo tracking | ✅ |
+| Notebook editing | ✅ |
+| CLAUDE.md / project memory | ✅ |
+| Config file hierarchy (`.claw.json` + merged config sections) | ✅ |
+| Permission system | ✅ |
+| MCP server lifecycle + inspection | ✅ |
+| Session persistence + resume | ✅ |
+| Cost / usage / stats surfaces | ✅ |
+| Git integration | ✅ |
+| Markdown terminal rendering (ANSI) | ✅ |
+| Model aliases (opus/sonnet/haiku) | ✅ |
+| Direct CLI subcommands (`status`, `sandbox`, `agents`, `mcp`, `skills`, `doctor`) | ✅ |
+| Slash commands (including `/skills`, `/agents`, `/mcp`, `/doctor`, `/plugin`, `/subagent`) | ✅ |
+| Hooks (`/hooks`, config-backed lifecycle hooks) | ✅ |
+| Plugin management surfaces | ✅ |
+| Skills inventory / install surfaces | ✅ |
+| Machine-readable JSON output across core CLI surfaces | ✅ |
+
+## Model Aliases
+
+Short names resolve to the latest model versions:
+
+| Alias | Resolves To |
+|-------|------------|
+| `opus` | `claude-opus-4-6` |
+| `sonnet` | `claude-sonnet-4-6` |
+| `haiku` | `claude-haiku-4-5-20251213` |
+
+## CLI Flags and Commands
+
+Representative current surface:
+
+```text
+claw [OPTIONS] [COMMAND]
+
+Flags:
+  --model MODEL
+  --output-format text|json
+  --permission-mode MODE
+  --dangerously-skip-permissions
+  --allowedTools TOOLS
+  --resume [SESSION.jsonl|session-id|latest]
+  --version, -V
+
+Top-level commands:
+  prompt <text>
+  help
+  version
+  status
+  sandbox
+  dump-manifests
+  bootstrap-plan
+  agents
+  mcp
+  skills
+  system-prompt
+  init
+```
+
+The command surface is moving quickly. For the canonical live help text, run:
 
 ```bash
-cargo build --release -p claw-cli
+cargo run -p rusty-claude-cli -- --help
 ```
 
-### Run
+## Slash Commands (REPL)
 
-From the workspace:
+Tab completion expands slash commands, model aliases, permission modes, and recent session IDs.
 
-```bash
-cargo run --bin claw -- --help
-cargo run --bin claw --
-cargo run --bin claw -- prompt "summarize this workspace"
-cargo run --bin claw -- --model sonnet "review the latest changes"
+The REPL now exposes a much broader surface than the original minimal shell:
+
+- session / visibility: `/help`, `/status`, `/sandbox`, `/cost`, `/resume`, `/session`, `/version`, `/usage`, `/stats`
+- workspace / git: `/compact`, `/clear`, `/config`, `/memory`, `/init`, `/diff`, `/commit`, `/pr`, `/issue`, `/export`, `/hooks`, `/files`, `/release-notes`
+- discovery / debugging: `/mcp`, `/agents`, `/skills`, `/doctor`, `/tasks`, `/context`, `/desktop`
+- automation / analysis: `/review`, `/advisor`, `/insights`, `/security-review`, `/subagent`, `/team`, `/telemetry`, `/providers`, `/cron`, and more
+- plugin management: `/plugin` (with aliases `/plugins`, `/marketplace`)
+
+Notable claw-first surfaces now available directly in slash form:
+- `/skills [list|install <path>|help]`
+- `/agents [list|help]`
+- `/mcp [list|show <server>|help]`
+- `/doctor`
+- `/plugin [list|install <path>|enable <name>|disable <name>|uninstall <id>|update <id>]`
+- `/subagent [list|steer <target> <msg>|kill <id>]`
+
+See [`../USAGE.md`](../USAGE.md) for usage examples and run `cargo run -p rusty-claude-cli -- --help` for the live canonical command list.
+
+## Workspace Layout
+
+```text
+rust/
+├── Cargo.toml              # Workspace root
+├── Cargo.lock
+└── crates/
+    ├── api/                # Provider clients + streaming + request preflight
+    ├── commands/           # Shared slash-command registry + help rendering
+    ├── compat-harness/     # TS manifest extraction harness
+    ├── mock-anthropic-service/ # Deterministic local Anthropic-compatible mock
+    ├── plugins/            # Plugin metadata, manager, install/enable/disable surfaces
+    ├── runtime/            # Session, config, permissions, MCP, prompts, auth/runtime loop
+    ├── rusty-claude-cli/   # Main CLI binary (`claw`)
+    ├── telemetry/          # Session tracing and usage telemetry types
+    └── tools/              # Built-in tools, skill resolution, tool search, agent runtime surfaces
 ```
 
-From the release build:
+### Crate Responsibilities
 
-```bash
-./target/release/claw
-./target/release/claw prompt "explain crates/runtime"
-```
+- **api** — provider clients, SSE streaming, request/response types, auth (`ANTHROPIC_API_KEY` + bearer-token support), request-size/context-window preflight
+- **commands** — slash command definitions, parsing, help text generation, JSON/text command rendering
+- **compat-harness** — extracts tool/prompt manifests from upstream TS source
+- **mock-anthropic-service** — deterministic `/v1/messages` mock for CLI parity tests and local harness runs
+- **plugins** — plugin metadata, install/enable/disable/update flows, plugin tool definitions, hook integration surfaces
+- **runtime** — `ConversationRuntime`, config loading, session persistence, permission policy, MCP client lifecycle, system prompt assembly, usage tracking
+- **rusty-claude-cli** — REPL, one-shot prompt, direct CLI subcommands, streaming display, tool call rendering, CLI argument parsing
+- **telemetry** — session trace events and supporting telemetry payloads
+- **tools** — tool specs + execution: Bash, ReadFile, WriteFile, EditFile, GlobSearch, GrepSearch, WebSearch, WebFetch, Agent, TodoWrite, NotebookEdit, Skill, ToolSearch, and runtime-facing tool discovery
 
-## Supported capabilities
+## Stats
 
-- Interactive REPL and one-shot prompt execution
-- Saved-session inspection and resume flows
-- Built-in workspace tools for shell, file read/write/edit, search, web fetch/search, todos, and notebook updates
-- Slash commands for status, compaction, config inspection, diff, export, session management, and version reporting
-- Local agent and skill discovery with `claw agents` and `claw skills`
-- Plugin discovery and management through the CLI and slash-command surfaces
-- OAuth login/logout plus model/provider selection from the command line
-- Workspace-aware instruction/config loading (`CLAW.md`, config files, permissions, plugin settings)
-
-## Current limitations
-
-- Public distribution is **source-build only** today; this workspace is not set up for crates.io publishing
-- GitHub CI verifies `cargo check`, `cargo test`, and release builds, but automated release packaging is not yet present
-- Current CI targets Ubuntu and macOS; Windows release readiness is still to be established
-- Some live-provider integration coverage is opt-in because it requires external credentials and network access
-- The command surface may continue to evolve during the `0.x` series
-
-## Implementation
-
-The Rust workspace is the active product implementation. It currently includes these crates:
-
-- `claw-cli` — user-facing binary
-- `api` — provider clients and streaming
-- `runtime` — sessions, config, permissions, prompts, and runtime loop
-- `tools` — built-in tool implementations
-- `commands` — slash-command registry and handlers
-- `plugins` — plugin discovery, registry, and lifecycle support
-- `lsp` — language-server protocol support types and process helpers
-- `server` and `compat-harness` — supporting services and compatibility tooling
-
-## Roadmap
-
-- Publish packaged release artifacts for public installs
-- Add a repeatable release workflow and longer-lived changelog discipline
-- Expand platform verification beyond the current CI matrix
-- Add more task-focused examples and operator documentation
-- Continue tightening feature coverage and UX polish across the Rust implementation
-
-## Release notes
-
-- Draft 0.1.0 release notes: [`docs/releases/0.1.0.md`](docs/releases/0.1.0.md)
+- **~20K lines** of Rust
+- **9 crates** in workspace
+- **Binary name:** `claw`
+- **Default model:** `claude-opus-4-6`
+- **Default permissions:** `danger-full-access`
 
 ## License
 
-See the repository root for licensing details.
+See repository root.

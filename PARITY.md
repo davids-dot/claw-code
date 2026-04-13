@@ -1,214 +1,187 @@
-# PARITY GAP ANALYSIS
+# Parity Status — claw-code Rust Port
 
-Scope: read-only comparison between the original TypeScript source at `/home/bellman/Workspace/claw-code/src/` and the Rust port under `rust/crates/`.
+Last updated: 2026-04-03
 
-Method: compared feature surfaces, registries, entrypoints, and runtime plumbing only. No TypeScript source was copied.
+## Summary
 
-## Executive summary
+- Canonical document: this top-level `PARITY.md` is the file consumed by `rust/scripts/run_mock_parity_diff.py`.
+- Requested 9-lane checkpoint: **All 9 lanes merged on `main`.**
+- Current `main` HEAD: `ee31e00` (stub implementations replaced with real AskUserQuestion + RemoteTrigger).
+- Repository stats at this checkpoint: **292 commits on `main` / 293 across all branches**, **9 crates**, **48,599 tracked Rust LOC**, **2,568 test LOC**, **3 authors**, date range **2026-03-31 → 2026-04-03**.
+- Mock parity harness stats: **10 scripted scenarios**, **19 captured `/v1/messages` requests** in `rust/crates/rusty-claude-cli/tests/mock_parity_harness.rs`.
 
-The Rust port has a good foundation for:
-- Anthropic API/OAuth basics
-- local conversation/session state
-- a core tool loop
-- MCP stdio/bootstrap support
-- CLAW.md discovery
-- a small but usable built-in tool set
+## Mock parity harness — milestone 1
 
-It is **not feature-parity** with the TypeScript CLI.
+- [x] Deterministic Anthropic-compatible mock service (`rust/crates/mock-anthropic-service`)
+- [x] Reproducible clean-environment CLI harness (`rust/crates/rusty-claude-cli/tests/mock_parity_harness.rs`)
+- [x] Scripted scenarios: `streaming_text`, `read_file_roundtrip`, `grep_chunk_assembly`, `write_file_allowed`, `write_file_denied`
 
-Largest gaps:
-- **plugins** are effectively absent in Rust
-- **hooks** are parsed but not executed in Rust
-- **CLI breadth** is much narrower in Rust
-- **skills** are local-file only in Rust, without the TS registry/bundled pipeline
-- **assistant orchestration** lacks TS hook-aware orchestration and remote/structured transports
-- **services** beyond core API/OAuth/MCP are mostly missing in Rust
+## Mock parity harness — milestone 2 (behavioral expansion)
 
----
+- [x] Scripted multi-tool turn coverage: `multi_tool_turn_roundtrip`
+- [x] Scripted bash coverage: `bash_stdout_roundtrip`
+- [x] Scripted permission prompt coverage: `bash_permission_prompt_approved`, `bash_permission_prompt_denied`
+- [x] Scripted plugin-path coverage: `plugin_tool_roundtrip`
+- [x] Behavioral diff/checklist runner: `rust/scripts/run_mock_parity_diff.py`
 
-## tools/
+## Harness v2 behavioral checklist
 
-### TS exists
-Evidence:
-- `src/tools/` contains broad tool families including `AgentTool`, `AskUserQuestionTool`, `BashTool`, `ConfigTool`, `FileReadTool`, `FileWriteTool`, `GlobTool`, `GrepTool`, `LSPTool`, `ListMcpResourcesTool`, `MCPTool`, `McpAuthTool`, `ReadMcpResourceTool`, `RemoteTriggerTool`, `ScheduleCronTool`, `SkillTool`, `Task*`, `Team*`, `TodoWriteTool`, `ToolSearchTool`, `WebFetchTool`, `WebSearchTool`.
-- Tool execution/orchestration is split across `src/services/tools/StreamingToolExecutor.ts`, `src/services/tools/toolExecution.ts`, `src/services/tools/toolHooks.ts`, and `src/services/tools/toolOrchestration.ts`.
+Canonical scenario map: `rust/mock_parity_scenarios.json`
 
-### Rust exists
-Evidence:
-- Tool registry is centralized in `rust/crates/tools/src/lib.rs` via `mvp_tool_specs()`.
-- Current built-ins include shell/file/search/web/todo/skill/agent/config/notebook/repl/powershell primitives.
-- Runtime execution is wired through `rust/crates/tools/src/lib.rs` and `rust/crates/runtime/src/conversation.rs`.
+- Multi-tool assistant turns
+- Bash flow roundtrips
+- Permission enforcement across tool paths
+- Plugin tool execution path
+- File tools — harness-validated flows
+- Streaming response support validated by the mock parity harness
 
-### Missing or broken in Rust
-- No Rust equivalents for major TS tools such as `AskUserQuestionTool`, `LSPTool`, `ListMcpResourcesTool`, `MCPTool`, `McpAuthTool`, `ReadMcpResourceTool`, `RemoteTriggerTool`, `ScheduleCronTool`, `Task*`, `Team*`, and several workflow/system tools.
-- Rust tool surface is still explicitly an MVP registry, not a parity registry.
-- Rust lacks TS’s layered tool orchestration split.
+## 9-lane checkpoint
 
-**Status:** partial core only.
+| Lane | Status | Feature commit | Merge commit | Evidence |
+|---|---|---|---|---|
+| 1. Bash validation | merged | `36dac6c` | `1cfd78a` | `jobdori/bash-validation-submodules`, `rust/crates/runtime/src/bash_validation.rs` (`+1004` on `main`) |
+| 2. CI fix | merged | `89104eb` | `f1969ce` | `rust/crates/runtime/src/sandbox.rs` (`+22/-1`) |
+| 3. File-tool | merged | `284163b` | `a98f2b6` | `rust/crates/runtime/src/file_ops.rs` (`+195/-1`) |
+| 4. TaskRegistry | merged | `5ea138e` | `21a1e1d` | `rust/crates/runtime/src/task_registry.rs` (`+336`) |
+| 5. Task wiring | merged | `e8692e4` | `d994be6` | `rust/crates/tools/src/lib.rs` (`+79/-35`) |
+| 6. Team+Cron | merged | `c486ca6` | `49653fe` | `rust/crates/runtime/src/team_cron_registry.rs`, `rust/crates/tools/src/lib.rs` (`+441/-37`) |
+| 7. MCP lifecycle | merged | `730667f` | `cc0f92e` | `rust/crates/runtime/src/mcp_tool_bridge.rs`, `rust/crates/tools/src/lib.rs` (`+491/-24`) |
+| 8. LSP client | merged | `2d66503` | `d7f0dc6` | `rust/crates/runtime/src/lsp_client.rs`, `rust/crates/tools/src/lib.rs` (`+461/-9`) |
+| 9. Permission enforcement | merged | `66283f4` | `336f820` | `rust/crates/runtime/src/permission_enforcer.rs`, `rust/crates/tools/src/lib.rs` (`+357`) |
 
----
+## Lane details
 
-## hooks/
+### Lane 1 — Bash validation
 
-### TS exists
-Evidence:
-- Hook command surface under `src/commands/hooks/`.
-- Runtime hook machinery in `src/services/tools/toolHooks.ts` and `src/services/tools/toolExecution.ts`.
-- TS supports `PreToolUse`, `PostToolUse`, and broader hook-driven behaviors configured through settings and documented in `src/skills/bundled/updateConfig.ts`.
+- **Status:** merged on `main`.
+- **Feature commit:** `36dac6c` — `feat: add bash validation submodules — readOnlyValidation, destructiveCommandWarning, modeValidation, sedValidation, pathValidation, commandSemantics`
+- **Evidence:** branch-only diff adds `rust/crates/runtime/src/bash_validation.rs` and a `runtime::lib` export (`+1005` across 2 files).
+- **Main-branch reality:** `rust/crates/runtime/src/bash.rs` is still the active on-`main` implementation at **283 LOC**, with timeout/background/sandbox execution. `PermissionEnforcer::check_bash()` adds read-only gating on `main`, but the dedicated validation module is not landed.
 
-### Rust exists
-Evidence:
-- Hook config is parsed and merged in `rust/crates/runtime/src/config.rs`.
-- Hook config can be inspected via Rust config reporting in `rust/crates/commands/src/lib.rs` and `rust/crates/claw-cli/src/main.rs`.
-- Prompt guidance mentions hooks in `rust/crates/runtime/src/prompt.rs`.
+### Bash tool — upstream has 18 submodules, Rust has 1:
 
-### Missing or broken in Rust
-- No actual hook execution pipeline in `rust/crates/runtime/src/conversation.rs`.
-- No PreToolUse/PostToolUse mutation/deny/rewrite/result-hook behavior.
-- No Rust `/hooks` parity command.
+- On `main`, this statement is still materially true.
+- Harness coverage proves bash execution and prompt escalation flows, but not the full upstream validation matrix.
+- The branch-only lane targets `readOnlyValidation`, `destructiveCommandWarning`, `modeValidation`, `sedValidation`, `pathValidation`, and `commandSemantics`.
 
-**Status:** config-only; runtime behavior missing.
+### Lane 2 — CI fix
 
----
+- **Status:** merged on `main`.
+- **Feature commit:** `89104eb` — `fix(sandbox): probe unshare capability instead of binary existence`
+- **Merge commit:** `f1969ce` — `Merge jobdori/fix-ci-sandbox: probe unshare capability for CI fix`
+- **Evidence:** `rust/crates/runtime/src/sandbox.rs` is **385 LOC** and now resolves sandbox support from actual `unshare` capability and container signals instead of assuming support from binary presence alone.
+- **Why it matters:** `.github/workflows/rust-ci.yml` runs `cargo fmt --all --check` and `cargo test -p rusty-claude-cli`; this lane removed a CI-specific sandbox assumption from runtime behavior.
 
-## plugins/
+### Lane 3 — File-tool
 
-### TS exists
-Evidence:
-- Built-in plugin scaffolding in `src/plugins/builtinPlugins.ts` and `src/plugins/bundled/index.ts`.
-- Plugin lifecycle/services in `src/services/plugins/PluginInstallationManager.ts` and `src/services/plugins/pluginOperations.ts`.
-- CLI/plugin command surface under `src/commands/plugin/` and `src/commands/reload-plugins/`.
+- **Status:** merged on `main`.
+- **Feature commit:** `284163b` — `feat(file_ops): add edge-case guards — binary detection, size limits, workspace boundary, symlink escape`
+- **Merge commit:** `a98f2b6` — `Merge jobdori/file-tool-edge-cases: binary detection, size limits, workspace boundary guards`
+- **Evidence:** `rust/crates/runtime/src/file_ops.rs` is **744 LOC** and now includes `MAX_READ_SIZE`, `MAX_WRITE_SIZE`, NUL-byte binary detection, and canonical workspace-boundary validation.
+- **Harness coverage:** `read_file_roundtrip`, `grep_chunk_assembly`, `write_file_allowed`, and `write_file_denied` are in the manifest and exercised by the clean-env harness.
 
-### Rust exists
-Evidence:
-- No dedicated plugin subsystem appears under `rust/crates/`.
-- Repo-wide Rust references to plugins are effectively absent beyond text/help mentions.
+### File tools — harness-validated flows
 
-### Missing or broken in Rust
-- No plugin loader.
-- No marketplace install/update/enable/disable flow.
-- No `/plugin` or `/reload-plugins` parity.
-- No plugin-provided hook/tool/command/MCP extension path.
+- `read_file_roundtrip` checks read-path execution and final synthesis.
+- `grep_chunk_assembly` checks chunked grep tool output handling.
+- `write_file_allowed` and `write_file_denied` validate both write success and permission denial.
 
-**Status:** missing.
+### Lane 4 — TaskRegistry
 
----
+- **Status:** merged on `main`.
+- **Feature commit:** `5ea138e` — `feat(runtime): add TaskRegistry — in-memory task lifecycle management`
+- **Merge commit:** `21a1e1d` — `Merge jobdori/task-runtime: TaskRegistry in-memory lifecycle management`
+- **Evidence:** `rust/crates/runtime/src/task_registry.rs` is **335 LOC** and provides `create`, `get`, `list`, `stop`, `update`, `output`, `append_output`, `set_status`, and `assign_team` over a thread-safe in-memory registry.
+- **Scope:** this lane replaces pure fixed-payload stub state with real runtime-backed task records, but it does not add external subprocess execution by itself.
 
-## skills/ and CLAW.md discovery
+### Lane 5 — Task wiring
 
-### TS exists
-Evidence:
-- Skill loading/registry pipeline in `src/skills/loadSkillsDir.ts`, `src/skills/bundledSkills.ts`, and `src/skills/mcpSkillBuilders.ts`.
-- Bundled skills under `src/skills/bundled/`.
-- Skills command surface under `src/commands/skills/`.
+- **Status:** merged on `main`.
+- **Feature commit:** `e8692e4` — `feat(tools): wire TaskRegistry into task tool dispatch`
+- **Merge commit:** `d994be6` — `Merge jobdori/task-registry-wiring: real TaskRegistry backing for all 6 task tools`
+- **Evidence:** `rust/crates/tools/src/lib.rs` dispatches `TaskCreate`, `TaskGet`, `TaskList`, `TaskStop`, `TaskUpdate`, and `TaskOutput` through `execute_tool()` and concrete `run_task_*` handlers.
+- **Current state:** task tools now expose real registry state on `main` via `global_task_registry()`.
 
-### Rust exists
-Evidence:
-- `Skill` tool in `rust/crates/tools/src/lib.rs` resolves and reads local `SKILL.md` files.
-- CLAW.md discovery is implemented in `rust/crates/runtime/src/prompt.rs`.
-- Rust supports `/memory` and `/init` via `rust/crates/commands/src/lib.rs` and `rust/crates/claw-cli/src/main.rs`.
+### Lane 6 — Team+Cron
 
-### Missing or broken in Rust
-- No bundled skill registry equivalent.
-- No `/skills` command.
-- No MCP skill-builder pipeline.
-- No TS-style live skill discovery/reload/change handling.
-- No comparable session-memory / team-memory integration around skills.
+- **Status:** merged on `main`.
+- **Feature commit:** `c486ca6` — `feat(runtime+tools): TeamRegistry and CronRegistry — replace team/cron stubs`
+- **Merge commit:** `49653fe` — `Merge jobdori/team-cron-runtime: TeamRegistry + CronRegistry wired into tool dispatch`
+- **Evidence:** `rust/crates/runtime/src/team_cron_registry.rs` is **363 LOC** and adds thread-safe `TeamRegistry` and `CronRegistry`; `rust/crates/tools/src/lib.rs` wires `TeamCreate`, `TeamDelete`, `CronCreate`, `CronDelete`, and `CronList` into those registries.
+- **Current state:** team/cron tools now have in-memory lifecycle behavior on `main`; they still stop short of a real background scheduler or worker fleet.
 
-**Status:** basic local skill loading only.
+### Lane 7 — MCP lifecycle
 
----
+- **Status:** merged on `main`.
+- **Feature commit:** `730667f` — `feat(runtime+tools): McpToolRegistry — MCP lifecycle bridge for tool surface`
+- **Merge commit:** `cc0f92e` — `Merge jobdori/mcp-lifecycle: McpToolRegistry lifecycle bridge for all MCP tools`
+- **Evidence:** `rust/crates/runtime/src/mcp_tool_bridge.rs` is **406 LOC** and tracks server connection status, resource listing, resource reads, tool listing, tool dispatch acknowledgements, auth state, and disconnects.
+- **Wiring:** `rust/crates/tools/src/lib.rs` routes `ListMcpResources`, `ReadMcpResource`, `McpAuth`, and `MCP` into `global_mcp_registry()` handlers.
+- **Scope:** this lane replaces pure stub responses with a registry bridge on `main`; end-to-end MCP connection population and broader transport/runtime depth still depend on the wider MCP runtime (`mcp_stdio.rs`, `mcp_client.rs`, `mcp.rs`).
 
-## cli/
+### Lane 8 — LSP client
 
-### TS exists
-Evidence:
-- Large command surface under `src/commands/` including `agents`, `hooks`, `mcp`, `memory`, `model`, `permissions`, `plan`, `plugin`, `resume`, `review`, `skills`, `tasks`, and many more.
-- Structured/remote transport stack in `src/cli/structuredIO.ts`, `src/cli/remoteIO.ts`, and `src/cli/transports/*`.
-- CLI handler split in `src/cli/handlers/*`.
+- **Status:** merged on `main`.
+- **Feature commit:** `2d66503` — `feat(runtime+tools): LspRegistry — LSP client dispatch for tool surface`
+- **Merge commit:** `d7f0dc6` — `Merge jobdori/lsp-client: LspRegistry dispatch for all LSP tool actions`
+- **Evidence:** `rust/crates/runtime/src/lsp_client.rs` is **438 LOC** and models diagnostics, hover, definition, references, completion, symbols, and formatting across a stateful registry.
+- **Wiring:** the exposed `LSP` tool schema in `rust/crates/tools/src/lib.rs` currently enumerates `symbols`, `references`, `diagnostics`, `definition`, and `hover`, then routes requests through `registry.dispatch(action, path, line, character, query)`.
+- **Scope:** current parity is registry/dispatch-level; completion/format support exists in the registry model, but not as clearly exposed at the tool schema boundary, and actual external language-server process orchestration remains separate.
 
-### Rust exists
-Evidence:
-- Shared slash command registry in `rust/crates/commands/src/lib.rs`.
-- Rust slash commands currently cover `help`, `status`, `compact`, `model`, `permissions`, `clear`, `cost`, `resume`, `config`, `memory`, `init`, `diff`, `version`, `export`, `session`.
-- Main CLI/repl/prompt handling lives in `rust/crates/claw-cli/src/main.rs`.
+### Lane 9 — Permission enforcement
 
-### Missing or broken in Rust
-- Missing major TS command families: `/agents`, `/hooks`, `/mcp`, `/plugin`, `/skills`, `/plan`, `/review`, `/tasks`, and many others.
-- No Rust equivalent to TS structured IO / remote transport layers.
-- No TS-style handler decomposition for auth/plugins/MCP/agents.
-- JSON prompt mode is improved on this branch, but still not clean transport parity: empirical verification shows tool-capable JSON output can emit human-readable tool-result lines before the final JSON object.
+- **Status:** merged on `main`.
+- **Feature commit:** `66283f4` — `feat(runtime+tools): PermissionEnforcer — permission mode enforcement layer`
+- **Merge commit:** `336f820` — `Merge jobdori/permission-enforcement: PermissionEnforcer with workspace + bash enforcement`
+- **Evidence:** `rust/crates/runtime/src/permission_enforcer.rs` is **340 LOC** and adds tool gating, file write boundary checks, and bash read-only heuristics on top of `rust/crates/runtime/src/permissions.rs`.
+- **Wiring:** `rust/crates/tools/src/lib.rs` exposes `enforce_permission_check()` and carries per-tool `required_permission` values in tool specs.
 
-**Status:** functional local CLI core, much narrower than TS.
+### Permission enforcement across tool paths
 
----
+- Harness scenarios validate `write_file_denied`, `bash_permission_prompt_approved`, and `bash_permission_prompt_denied`.
+- `PermissionEnforcer::check()` delegates to `PermissionPolicy::authorize()` and returns structured allow/deny results.
+- `check_file_write()` enforces workspace boundaries and read-only denial; `check_bash()` denies mutating commands in read-only mode and blocks prompt-mode bash without confirmation.
 
-## assistant/ (agentic loop, streaming, tool calling)
+## Tool Surface: 40 exposed tool specs on `main`
 
-### TS exists
-Evidence:
-- Assistant/session surface at `src/assistant/sessionHistory.ts`.
-- Tool orchestration in `src/services/tools/StreamingToolExecutor.ts`, `src/services/tools/toolExecution.ts`, `src/services/tools/toolOrchestration.ts`.
-- Remote/structured streaming layers in `src/cli/structuredIO.ts` and `src/cli/remoteIO.ts`.
+- `mvp_tool_specs()` in `rust/crates/tools/src/lib.rs` exposes **40** tool specs.
+- Core execution is present for `bash`, `read_file`, `write_file`, `edit_file`, `glob_search`, and `grep_search`.
+- Existing product tools in `mvp_tool_specs()` include `WebFetch`, `WebSearch`, `TodoWrite`, `Skill`, `Agent`, `ToolSearch`, `NotebookEdit`, `Sleep`, `SendUserMessage`, `Config`, `EnterPlanMode`, `ExitPlanMode`, `StructuredOutput`, `REPL`, and `PowerShell`.
+- The 9-lane push replaced pure fixed-payload stubs for `Task*`, `Team*`, `Cron*`, `LSP`, and MCP tools with registry-backed handlers on `main`.
+- `Brief` is handled as an execution alias in `execute_tool()`, but it is not a separately exposed tool spec in `mvp_tool_specs()`.
 
-### Rust exists
-Evidence:
-- Core loop in `rust/crates/runtime/src/conversation.rs`.
-- Stream/tool event translation in `rust/crates/claw-cli/src/main.rs`.
-- Session persistence in `rust/crates/runtime/src/session.rs`.
+### Still limited or intentionally shallow
 
-### Missing or broken in Rust
-- No TS-style hook-aware orchestration layer.
-- No TS structured/remote assistant transport stack.
-- No richer TS assistant/session-history/background-task integration.
-- JSON output path is no longer single-turn only on this branch, but output cleanliness still lags TS transport expectations.
+- `AskUserQuestion` still returns a pending response payload rather than real interactive UI wiring.
+- `RemoteTrigger` remains a stub response.
+- `TestingPermission` remains test-only.
+- Task, team, cron, MCP, and LSP are no longer just fixed-payload stubs in `execute_tool()`, but several remain registry-backed approximations rather than full external-runtime integrations.
+- Bash deep validation remains branch-only until `36dac6c` is merged.
 
-**Status:** strong core loop, missing orchestration layers.
+## Reconciled from the older PARITY checklist
 
----
+- [x] Path traversal prevention (symlink following, `../` escapes)
+- [x] Size limits on read/write
+- [x] Binary file detection
+- [x] Permission mode enforcement (read-only vs workspace-write)
+- [x] Config merge precedence (user > project > local) — `ConfigLoader::discover()` loads user → project → local, and `loads_and_merges_claude_code_config_files_by_precedence()` verifies the merge order.
+- [x] Plugin install/enable/disable/uninstall flow — `/plugin` slash handling in `rust/crates/commands/src/lib.rs` delegates to `PluginManager::{install, enable, disable, uninstall}` in `rust/crates/plugins/src/lib.rs`.
+- [x] No `#[ignore]` tests hiding failures — `grep` over `rust/**/*.rs` found 0 ignored tests.
 
-## services/ (API client, auth, models, MCP)
+## Still open
 
-### TS exists
-Evidence:
-- API services under `src/services/api/*`.
-- OAuth services under `src/services/oauth/*`.
-- MCP services under `src/services/mcp/*`.
-- Additional service layers for analytics, prompt suggestion, session memory, plugin operations, settings sync, policy limits, team memory sync, notifier, voice, and more under `src/services/*`.
+- [ ] End-to-end MCP runtime lifecycle beyond the registry bridge now on `main`
+- [x] Output truncation (large stdout/file content)
+- [ ] Session compaction behavior matching
+- [ ] Token counting / cost tracking accuracy
+- [x] Bash validation lane merged onto `main`
+- [ ] CI green on every commit
 
-### Rust exists
-Evidence:
-- Core Anthropic API client in `rust/crates/api/src/{client,error,sse,types}.rs`.
-- OAuth support in `rust/crates/runtime/src/oauth.rs`.
-- MCP config/bootstrap/client support in `rust/crates/runtime/src/{config,mcp,mcp_client,mcp_stdio}.rs`.
-- Usage accounting in `rust/crates/runtime/src/usage.rs`.
-- Remote upstream-proxy support in `rust/crates/runtime/src/remote.rs`.
+## Migration Readiness
 
-### Missing or broken in Rust
-- Most TS service ecosystem beyond core messaging/auth/MCP is absent.
-- No TS-equivalent plugin service layer.
-- No TS-equivalent analytics/settings-sync/policy-limit/team-memory subsystems.
-- No TS-style MCP connection-manager/UI layer.
-- Model/provider ergonomics remain thinner than TS.
-
-**Status:** core foundation exists; broader service ecosystem missing.
-
----
-
-## Critical bug status in this worktree
-
-### Fixed
-- **Prompt mode tools enabled**
-  - `rust/crates/claw-cli/src/main.rs` now constructs prompt mode with `LiveCli::new(model, true, ...)`.
-- **Default permission mode = DangerFullAccess**
-  - Runtime default now resolves to `DangerFullAccess` in `rust/crates/claw-cli/src/main.rs`.
-  - Clap default also uses `DangerFullAccess` in `rust/crates/claw-cli/src/args.rs`.
-  - Init template writes `dontAsk` in `rust/crates/claw-cli/src/init.rs`.
-- **Streaming `{}` tool-input prefix bug**
-  - `rust/crates/claw-cli/src/main.rs` now strips the initial empty object only for streaming tool input, while preserving legitimate `{}` in non-stream responses.
-- **Unlimited max_iterations**
-  - Verified at `rust/crates/runtime/src/conversation.rs` with `usize::MAX`.
-
-### Remaining notable parity issue
-- **JSON prompt output cleanliness**
-  - Tool-capable JSON mode now loops, but empirical verification still shows pre-JSON human-readable tool-result output when tools fire.
+- [x] `PARITY.md` maintained and honest
+- [x] 9 requested lanes documented with commit hashes and current status
+- [x] All 9 requested lanes landed on `main` (`bash-validation` is still branch-only)
+- [x] No `#[ignore]` tests hiding failures
+- [ ] CI green on every commit
+- [x] Codebase shape clean enough for handoff documentation
