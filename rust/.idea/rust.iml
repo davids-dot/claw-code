@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<module type="EMPTY_MODULE" version="4">
+  <component name="NewModuleRootManager">
+    <content url="file://$MODULE_DIR$">
+      <sourceFolder url="file://$MODULE_DIR$/crates/api/benches" isTestSource="true" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/api/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/api/tests" isTestSource="true" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/commands/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/compat-harness/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/lsp/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/mock-anthropic-service/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/plugins/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/runtime/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/runtime/tests" isTestSource="true" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/rusty-claude-cli/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/rusty-claude-cli/tests" isTestSource="true" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/telemetry/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/tools/src" isTestSource="false" />
+      <excludeFolder url="file://$MODULE_DIR$/target" />
+    </content>
+    <orderEntry type="inheritedJdk" />
+    <orderEntry type="sourceFolder" forTests="false" />
+  </component>
+</module>
