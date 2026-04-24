@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "defaultMode": "dontAsk"
+  },
+  "model": "glm-5",
+  "env": {
+    "DASHSCOPE_API_KEY": "sk-600c64d620454dae8df1bd86541a099a",
+    "DASHSCOPE_BASE_URL": "https://dashscope.aliyuncs.com/compatible-mode/v1"
+  }
+}

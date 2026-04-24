@@ -1,5 +1,6 @@
 [workspace]
 members = ["crates/*"]
+exclude = ["crates/server", "crates/claw-cli"]
 resolver = "2"
 
 [workspace.package]
@@ -10,6 +11,7 @@ publish = false
 
 [workspace.dependencies]
 serde_json = "1"
+lsp-types = "0.95"
 
 [workspace.lints.rust]
 unsafe_code = "forbid"
