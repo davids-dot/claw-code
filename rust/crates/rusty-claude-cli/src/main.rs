@@ -383,11 +383,13 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             model_flag_raw,
             permission_mode,
             output_format,
+            allowed_tools,
         } => print_status_snapshot(
             &model,
             model_flag_raw.as_deref(),
             permission_mode,
             output_format,
+            allowed_tools.as_ref(),
         )?,
         CliAction::Sandbox { output_format } => print_sandbox_status_snapshot(output_format)?,
         CliAction::Prompt {
@@ -526,6 +528,7 @@ enum CliAction {
         model_flag_raw: Option<String>,
         permission_mode: PermissionMode,
         output_format: CliOutputFormat,
+        allowed_tools: Option<AllowedToolSet>,
     },
     Sandbox {
         output_format: CliOutputFormat,
@@ -860,6 +863,7 @@ fn parse_args(args: &[String]) -> Result<CliAction, String> {
         model_flag_raw.as_deref(),
         permission_mode_override,
         output_format,
+        allowed_tools.clone(),
     ) {
         return action;
     }
@@ -1065,6 +1069,7 @@ fn parse_single_word_command_alias(
     model_flag_raw: Option<&str>,
     permission_mode_override: Option<PermissionMode>,
     output_format: CliOutputFormat,
+    allowed_tools: Option<AllowedToolSet>,
 ) -> Option<Result<CliAction, String>> {
     if rest.is_empty() {
         return None;
@@ -1109,6 +1114,7 @@ fn parse_single_word_command_alias(
             model_flag_raw: model_flag_raw.map(str::to_string), // #148
             permission_mode: permission_mode_override.unwrap_or_else(default_permission_mode),
             output_format,
+            allowed_tools,
         })),
         "sandbox" => Some(Ok(CliAction::Sandbox { output_format })),
         "doctor" => Some(Ok(CliAction::Doctor { output_format })),
@@ -3243,6 +3249,7 @@ fn run_resume_command(
                     default_permission_mode().as_str(),
                     &context,
                     None, // #148: resumed sessions don't have flag provenance
+                    None,
                 )),
             })
         }
@@ -5433,6 +5440,7 @@ fn print_status_snapshot(
     model_flag_raw: Option<&str>,
     permission_mode: PermissionMode,
     output_format: CliOutputFormat,
+    allowed_tools: Option<&AllowedToolSet>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let usage = StatusUsage {
         message_count: 0,
@@ -5472,6 +5480,7 @@ fn print_status_snapshot(
                 permission_mode.as_str(),
                 &context,
                 Some(&provenance),
+                allowed_tools,
             ))?
         ),
     }
@@ -5489,6 +5498,7 @@ fn status_json_value(
     // that don't have provenance (legacy resume paths) pass None, in which
     // case both new fields are omitted.
     provenance: Option<&ModelProvenance>,
+    allowed_tools: Option<&AllowedToolSet>,
 ) -> serde_json::Value {
     // #143: top-level `status` marker so claws can distinguish
     // a clean run from a degraded run (config parse failed but other fields
@@ -5498,6 +5508,7 @@ fn status_json_value(
     let degraded = context.config_load_error.is_some();
     let model_source = provenance.map(|p| p.source.as_str());
     let model_raw = provenance.and_then(|p| p.raw.clone());
+    let allowed_tool_entries = allowed_tools.map(|tools| tools.iter().cloned().collect::<Vec<_>>());
     json!({
         "kind": "status",
         "status": if degraded { "degraded" } else { "ok" },
@@ -5506,6 +5517,11 @@ fn status_json_value(
         "model_source": model_source,
         "model_raw": model_raw,
         "permission_mode": permission_mode,
+        "allowed_tools": {
+            "source": if allowed_tools.is_some() { "flag" } else { "default" },
+            "restricted": allowed_tools.is_some(),
+            "entries": allowed_tool_entries,
+        },
         "usage": {
             "messages": usage.message_count,
             "turns": usage.turns,
@@ -9827,6 +9843,18 @@ mod tests {
     }
 
     #[test]
+    fn rejects_empty_allowed_tools_flag() {
+        for raw in ["", ",,"] {
+            let error = parse_args(&["--allowedTools".to_string(), raw.to_string()])
+                .expect_err("empty allowedTools should be rejected");
+            assert!(
+                error.contains("--allowedTools was provided with no usable tool names"),
+                "unexpected error for {raw:?}: {error}"
+            );
+        }
+    }
+
+    #[test]
     fn parses_system_prompt_options() {
         let args = vec![
             "system-prompt".to_string(),
@@ -10281,8 +10309,14 @@ mod tests {
             cumulative: runtime::TokenUsage::default(),
             estimated_tokens: 0,
         };
-        let json =
-            super::status_json_value(Some("test-model"), usage, "workspace-write", &context, None);
+        let json = super::status_json_value(
+            Some("test-model"),
+            usage,
+            "workspace-write",
+            &context,
+            None,
+            None,
+        );
         assert_eq!(
             json.get("status").and_then(|v| v.as_str()),
             Some("degraded"),
@@ -10306,6 +10340,46 @@ mod tests {
         assert!(
             json.get("sandbox").is_some(),
             "sandbox field still reported"
+        );
+        assert_eq!(
+            json.pointer("/allowed_tools/source")
+                .and_then(|v| v.as_str()),
+            Some("default"),
+            "default status should expose unrestricted tool source: {json}"
+        );
+        assert_eq!(
+            json.pointer("/allowed_tools/restricted")
+                .and_then(|v| v.as_bool()),
+            Some(false),
+            "default status should expose unrestricted tool state: {json}"
+        );
+
+        let allowed: super::AllowedToolSet = ["read_file", "grep_search"]
+            .into_iter()
+            .map(str::to_string)
+            .collect();
+        let restricted_json = super::status_json_value(
+            Some("test-model"),
+            usage,
+            "workspace-write",
+            &context,
+            None,
+            Some(&allowed),
+        );
+        assert_eq!(
+            restricted_json
+                .pointer("/allowed_tools/source")
+                .and_then(|v| v.as_str()),
+            Some("flag"),
+            "flag status should expose allow-list source: {restricted_json}"
+        );
+        assert_eq!(
+            restricted_json
+                .pointer("/allowed_tools/entries")
+                .and_then(|v| v.as_array())
+                .map(Vec::len),
+            Some(2),
+            "flag status should expose allow-list entries: {restricted_json}"
         );
 
         // Clean path: no config error → status: "ok", config_load_error: null.
@@ -10398,6 +10472,7 @@ mod tests {
                 model_flag_raw: None, // #148: no --model flag passed
                 permission_mode: PermissionMode::DangerFullAccess,
                 output_format: CliOutputFormat::Text,
+                allowed_tools: None,
             }
         );
         assert_eq!(
@@ -10439,6 +10514,21 @@ mod tests {
         assert!(
             err_gpt.contains("OPENAI_API_KEY"),
             "GPT model error should mention env var: {err_gpt}"
+        );
+        let err_qwen = parse_args(&[
+            "prompt".to_string(),
+            "test".to_string(),
+            "--model".to_string(),
+            "qwen-plus".to_string(),
+        ])
+        .expect_err("`--model qwen-plus` should fail with DashScope hint");
+        assert!(
+            err_qwen.contains("Did you mean `qwen/qwen-plus`?"),
+            "Qwen model error should hint qwen/ prefix: {err_qwen}"
+        );
+        assert!(
+            err_qwen.contains("DASHSCOPE_API_KEY"),
+            "Qwen model error should mention env var: {err_qwen}"
         );
         // Unrelated invalid model should NOT get a hint
         let err_garbage = parse_args(&[
