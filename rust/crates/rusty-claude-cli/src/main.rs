@@ -200,8 +200,9 @@ type RuntimePluginStateBuildOutput = (
 );
 
 fn main() {
+
     if let Err(error) = run() {
-        let message = error.to_string();
+        let message = format!("{:?}\n\nStack trace:\n{}", error, std::backtrace::Backtrace::force_capture());
         // When --output-format json is active, emit errors as JSON so downstream
         // tools can parse failures the same way they parse successes (ROADMAP #42).
         let argv: Vec<String> = std::env::args().collect();
@@ -209,6 +210,7 @@ fn main() {
             .windows(2)
             .any(|w| w[0] == "--output-format" && w[1] == "json")
             || argv.iter().any(|a| a == "--output-format=json");
+
         if json_output {
             // #77: classify error by prefix so downstream claws can route without
             // regex-scraping the prose. Split short-reason from hint-runbook.
@@ -333,6 +335,7 @@ fn merge_prompt_with_stdin(prompt: &str, stdin_content: Option<&str>) -> String 
 
 fn run() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<String> = env::args().skip(1).collect();
+
     match parse_args(&args)? {
         CliAction::DumpManifests {
             output_format,
@@ -398,7 +401,8 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 None
             };
             let effective_prompt = merge_prompt_with_stdin(&prompt, stdin_context.as_deref());
-            let mut cli = LiveCli::new(model, true, allowed_tools, permission_mode)?;
+            let resolved_model = resolve_repl_model(model);
+            let mut cli = LiveCli::new(resolved_model, true, allowed_tools, permission_mode)?;
             cli.set_reasoning_effort(reasoning_effort);
             cli.run_turn_with_output(&effective_prompt, output_format, compact)?;
         }
@@ -442,6 +446,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             output_path,
             output_format,
         } => run_export(&session_reference, output_path.as_deref(), output_format)?,
+
         CliAction::Repl {
             model,
             allowed_tools,
@@ -1450,8 +1455,13 @@ fn validate_model_syntax(model: &str) -> Result<(), String> {
     }
     // Known aliases are always valid
     match trimmed {
-        "opus" | "sonnet" | "haiku" => return Ok(()),
+        "opus" | "sonnet" | "haiku" | "grok" | "grok-2" | "grok-3" | "grok-mini" | "grok-3-mini" | "kimi" | "glm-5" => return Ok(()),
         _ => {}
+    }
+    
+    // Dashscope and xAI models that don't use provider/model syntax
+    if trimmed.starts_with("qwen-") || trimmed.starts_with("ali-") || trimmed.starts_with("glm-") || trimmed.starts_with("kimi-") {
+        return Ok(());
     }
     // Check for spaces (malformed)
     if trimmed.contains(' ') {

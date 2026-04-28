@@ -198,7 +198,8 @@ pub fn metadata_for_model(model: &str) -> Option<ProviderMetadata> {
     // to the OpenAI-compat client pointed at DashScope's /compatible-mode/v1.
     // Uses the OpenAi provider kind because DashScope speaks the OpenAI REST
     // shape — only the base URL and auth env var differ.
-    if canonical.starts_with("qwen/") || canonical.starts_with("qwen-") {
+    // Allow ali- prefix as well for generic DashScope usage.
+    if canonical.starts_with("qwen/") || canonical.starts_with("qwen-") || canonical.starts_with("ali/") || canonical.starts_with("ali-") || canonical.starts_with("glm/") || canonical.starts_with("glm-") {
         return Some(ProviderMetadata {
             provider: ProviderKind::OpenAi,
             auth_env: "DASHSCOPE_API_KEY",
@@ -241,6 +242,9 @@ pub fn detect_provider_kind(model: &str) -> ProviderKind {
     }
     if openai_compat::has_api_key("XAI_API_KEY") {
         return ProviderKind::Xai;
+    }
+    if openai_compat::has_api_key("DASHSCOPE_API_KEY") {
+        return ProviderKind::OpenAi;
     }
     // Last resort: if OPENAI_BASE_URL is set without OPENAI_API_KEY (some
     // local providers like Ollama don't require auth), still route there.
@@ -446,13 +450,33 @@ pub(crate) fn load_dotenv_file(
     Some(parse_dotenv(&content))
 }
 
-/// Look up `key` in a `.env` file located in the current working directory.
-/// Returns `None` when the file is missing, the key is absent, or the value
-/// is empty.
+/// Look up `key` in `.env` files, searching in order: current working directory,
+/// then the executable's parent directory, then the user's home directory.
+/// Returns `None` when no `.env` file containing the key is found or the value
+/// is empty. This ensures credentials are accessible regardless of cwd, which
+/// matters because `claw` may be invoked from any project directory.
 pub(crate) fn dotenv_value(key: &str) -> Option<String> {
-    let cwd = std::env::current_dir().ok()?;
-    let values = load_dotenv_file(&cwd.join(".env"))?;
-    values.get(key).filter(|value| !value.is_empty()).cloned()
+    let cwd = std::env::current_dir().ok();
+    let home = std::env::var_os("HOME").map(std::path::PathBuf::from);
+    let exe_dir = std::env::current_exe()
+        .ok()
+        .and_then(|exe| exe.parent().map(std::path::PathBuf::from));
+
+    // Search order: cwd → exe directory → home directory
+    let search_paths: Vec<std::path::PathBuf> = [cwd, exe_dir, home]
+        .into_iter()
+        .flatten()
+        .collect();
+
+    for dir in &search_paths {
+        let env_path = dir.join(".env");
+        if let Some(values) = load_dotenv_file(&env_path) {
+            if let Some(value) = values.get(key).filter(|v| !v.is_empty()) {
+                return Some(value.clone());
+            }
+        }
+    }
+    None
 }
 
 #[cfg(test)]

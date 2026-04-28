@@ -357,7 +357,23 @@ where
                 Ok(events) => events,
                 Err(error) => {
                     self.record_turn_failed(iterations, &error);
-                    return Err(error);
+                    
+                    let result = compact_session(
+                        &self.session,
+                        CompactionConfig {
+                            max_estimated_tokens: 0,
+                            ..Default::default()
+                        },
+                    );
+                    if result.removed_message_count > 0 {
+                        self.session = result.compacted_session;
+                    }
+                    
+                    let error_msg = format!("API request failed with error: {error}\nI have automatically truncated the earlier conversation history to reduce context length. Please analyze the error, review your task, and continue.");
+                    if let Err(e) = self.session.push_user_text(error_msg) {
+                        return Err(RuntimeError::new(format!("Failed to push error message: {e}")));
+                    }
+                    continue;
                 }
             };
             let (assistant_message, usage, turn_prompt_cache_events) =
@@ -365,7 +381,12 @@ where
                     Ok(result) => result,
                     Err(error) => {
                         self.record_turn_failed(iterations, &error);
-                        return Err(error);
+                        
+                        let error_msg = format!("Failed to parse API response: {error}\nPlease try again.");
+                        if let Err(e) = self.session.push_user_text(error_msg) {
+                            return Err(RuntimeError::new(format!("Failed to push error message: {e}")));
+                        }
+                        continue;
                     }
                 };
             if let Some(usage) = usage {

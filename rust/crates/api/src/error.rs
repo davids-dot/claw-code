@@ -1,6 +1,7 @@
 use std::env::VarError;
 use std::fmt::{Display, Formatter};
 use std::time::Duration;
+use std::backtrace::Backtrace;
 
 const GENERIC_FATAL_WRAPPER_MARKERS: &[&str] = &[
     "something went wrong while processing your request",
@@ -27,6 +28,7 @@ pub enum ApiError {
         /// user probably intended (e.g. an `OpenAI` key is set but Anthropic
         /// was selected because no Anthropic credentials exist).
         hint: Option<String>,
+        backtrace: Backtrace,
     },
     ContextWindowExceeded {
         model: String,
@@ -74,7 +76,8 @@ pub enum ApiError {
 
 impl ApiError {
     #[must_use]
-    pub const fn missing_credentials(
+    #[track_caller]
+    pub fn missing_credentials(
         provider: &'static str,
         env_vars: &'static [&'static str],
     ) -> Self {
@@ -82,6 +85,7 @@ impl ApiError {
             provider,
             env_vars,
             hint: None,
+            backtrace: Backtrace::force_capture(),
         }
     }
 
@@ -91,6 +95,7 @@ impl ApiError {
     /// suggest the likely fix when the user has credentials for a different
     /// provider already in the environment.
     #[must_use]
+    #[track_caller]
     pub fn missing_credentials_with_hint(
         provider: &'static str,
         env_vars: &'static [&'static str],
@@ -100,6 +105,7 @@ impl ApiError {
             provider,
             env_vars,
             hint: Some(hint.into()),
+            backtrace: Backtrace::force_capture(),
         }
     }
 
@@ -248,6 +254,7 @@ impl Display for ApiError {
                 provider,
                 env_vars,
                 hint,
+                backtrace: _,
             } => {
                 write!(
                     f,

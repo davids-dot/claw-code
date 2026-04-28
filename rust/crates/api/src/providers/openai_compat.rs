@@ -801,7 +801,7 @@ fn strip_routing_prefix(model: &str) -> &str {
         let prefix = &model[..pos];
         // Only strip if the prefix before "/" is a known routing prefix,
         // not if "/" appears in the middle of the model name for other reasons.
-        if matches!(prefix, "openai" | "xai" | "grok" | "qwen" | "kimi") {
+        if matches!(prefix, "openai" | "xai" | "grok" | "qwen" | "kimi" | "ali" | "glm") {
             &model[pos + 1..]
         } else {
             model
