@@ -1,22 +1,6 @@
 name: Rust CI
 
 on:
-  push:
-    branches:
-      - main
-      - 'gaebal/**'
-      - 'omx-issue-*'
-    paths:
-      - .github/workflows/rust-ci.yml
-      - .github/scripts/check_doc_source_of_truth.py
-      - .github/FUNDING.yml
-      - README.md
-      - USAGE.md
-      - PARITY.md
-      - PHILOSOPHY.md
-      - ROADMAP.md
-      - docs/**
-      - rust/**
   pull_request:
     branches:
       - main
