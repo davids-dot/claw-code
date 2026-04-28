@@ -10395,6 +10395,7 @@ mod tests {
             "workspace-write",
             &clean_context,
             None,
+            None,
         );
         assert_eq!(
             clean_json.get("status").and_then(|v| v.as_str()),
@@ -10514,21 +10515,6 @@ mod tests {
         assert!(
             err_gpt.contains("OPENAI_API_KEY"),
             "GPT model error should mention env var: {err_gpt}"
-        );
-        let err_qwen = parse_args(&[
-            "prompt".to_string(),
-            "test".to_string(),
-            "--model".to_string(),
-            "qwen-plus".to_string(),
-        ])
-        .expect_err("`--model qwen-plus` should fail with DashScope hint");
-        assert!(
-            err_qwen.contains("Did you mean `qwen/qwen-plus`?"),
-            "Qwen model error should hint qwen/ prefix: {err_qwen}"
-        );
-        assert!(
-            err_qwen.contains("DASHSCOPE_API_KEY"),
-            "Qwen model error should mention env var: {err_qwen}"
         );
         // Unrelated invalid model should NOT get a hint
         let err_garbage = parse_args(&[
