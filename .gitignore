@@ -10,3 +10,6 @@ archive/
 .claw/sessions/
 .clawhip/
 status-help.txt
+
+
+.idea/
