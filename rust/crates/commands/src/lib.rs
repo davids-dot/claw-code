@@ -2339,19 +2339,13 @@ pub fn handle_agents_slash_command_json(args: Option<&str>, cwd: &Path) -> std::
 }
 
 #[must_use]
-pub fn handle_mcp_slash_command(
-    args: Option<&str>,
-    cwd: &Path,
-) -> String {
+pub fn handle_mcp_slash_command(args: Option<&str>, cwd: &Path) -> String {
     let loader = ConfigLoader::default_for(cwd);
     render_mcp_report_for(&loader, cwd, args)
 }
 
 #[must_use]
-pub fn handle_mcp_slash_command_json(
-    args: Option<&str>,
-    cwd: &Path,
-) -> Value {
+pub fn handle_mcp_slash_command_json(args: Option<&str>, cwd: &Path) -> Value {
     let loader = ConfigLoader::default_for(cwd);
     render_mcp_report_json_for(&loader, cwd, args)
 }
@@ -2539,11 +2533,7 @@ pub fn resolve_skill_path(cwd: &Path, skill: &str) -> std::io::Result<PathBuf> {
     ))
 }
 
-fn render_mcp_report_for(
-    loader: &ConfigLoader,
-    cwd: &Path,
-    args: Option<&str>,
-) -> String {
+fn render_mcp_report_for(loader: &ConfigLoader, cwd: &Path, args: Option<&str>) -> String {
     if let Some(args) = normalize_optional_args(args) {
         if let Some(help_path) = help_path_from_args(args) {
             return match help_path.as_slice() {
@@ -2560,10 +2550,9 @@ fn render_mcp_report_for(
             // as #143 for `status`). Text mode prepends a "Config load error"
             // block before the MCP list; the list falls back to empty.
             match loader.load() {
-                Ok(runtime_config) => render_mcp_summary_report(
-                    cwd,
-                    runtime_config.mcp().servers(),
-                ),
+                Ok(runtime_config) => {
+                    render_mcp_summary_report(cwd, runtime_config.mcp().servers())
+                }
                 Err(err) => {
                     let empty = std::collections::BTreeMap::new();
                     format!(
@@ -2602,11 +2591,7 @@ fn render_mcp_report_for(
     }
 }
 
-fn render_mcp_report_json_for(
-    loader: &ConfigLoader,
-    cwd: &Path,
-    args: Option<&str>,
-) -> Value {
+fn render_mcp_report_json_for(loader: &ConfigLoader, cwd: &Path, args: Option<&str>) -> Value {
     if let Some(args) = normalize_optional_args(args) {
         if let Some(help_path) = help_path_from_args(args) {
             return match help_path.as_slice() {
@@ -5362,17 +5347,14 @@ mod tests {
         assert!(help.contains("Usage            /mcp [list|show <server>|help]"));
         assert!(help.contains("Direct CLI       claw mcp [list|show <server>|help]"));
 
-        let unexpected =
-            super::handle_mcp_slash_command(Some("show alpha beta"), &cwd);
+        let unexpected = super::handle_mcp_slash_command(Some("show alpha beta"), &cwd);
         assert!(unexpected.contains("Unexpected       show alpha beta"));
 
-        let nested_help =
-            super::handle_mcp_slash_command(Some("show --help"), &cwd);
+        let nested_help = super::handle_mcp_slash_command(Some("show --help"), &cwd);
         assert!(nested_help.contains("Usage            /mcp [list|show <server>|help]"));
         assert!(nested_help.contains("Unexpected       show"));
 
-        let unknown_help =
-            super::handle_mcp_slash_command(Some("inspect --help"), &cwd);
+        let unknown_help = super::handle_mcp_slash_command(Some("inspect --help"), &cwd);
         assert!(unknown_help.contains("Usage            /mcp [list|show <server>|help]"));
         assert!(unknown_help.contains("Unexpected       inspect"));
 
@@ -5496,8 +5478,7 @@ mod tests {
         .expect("write local settings");
 
         let loader = ConfigLoader::new(&workspace, &config_home);
-        let list =
-            render_mcp_report_json_for(&loader, &workspace, None);
+        let list = render_mcp_report_json_for(&loader, &workspace, None);
         assert_eq!(list["kind"], "mcp");
         assert_eq!(list["action"], "list");
         assert_eq!(list["configured_servers"], 2);
@@ -5523,8 +5504,7 @@ mod tests {
         assert_eq!(missing["found"], false);
         assert_eq!(missing["server_name"], "missing");
 
-        let help =
-            render_mcp_report_json_for(&loader, &workspace, Some("help"));
+        let help = render_mcp_report_json_for(&loader, &workspace, Some("help"));
         assert_eq!(help["action"], "help");
         assert_eq!(help["usage"]["sources"][0], ".claw/settings.json");
 
