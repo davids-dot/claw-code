@@ -199,7 +199,13 @@ pub fn metadata_for_model(model: &str) -> Option<ProviderMetadata> {
     // Uses the OpenAi provider kind because DashScope speaks the OpenAI REST
     // shape — only the base URL and auth env var differ.
     // Allow ali- prefix as well for generic DashScope usage.
-    if canonical.starts_with("qwen/") || canonical.starts_with("qwen-") || canonical.starts_with("ali/") || canonical.starts_with("ali-") || canonical.starts_with("glm/") || canonical.starts_with("glm-") {
+    if canonical.starts_with("qwen/")
+        || canonical.starts_with("qwen-")
+        || canonical.starts_with("ali/")
+        || canonical.starts_with("ali-")
+        || canonical.starts_with("glm/")
+        || canonical.starts_with("glm-")
+    {
         return Some(ProviderMetadata {
             provider: ProviderKind::OpenAi,
             auth_env: "DASHSCOPE_API_KEY",
@@ -463,10 +469,8 @@ pub(crate) fn dotenv_value(key: &str) -> Option<String> {
         .and_then(|exe| exe.parent().map(std::path::PathBuf::from));
 
     // Search order: cwd → exe directory → home directory
-    let search_paths: Vec<std::path::PathBuf> = [cwd, exe_dir, home]
-        .into_iter()
-        .flatten()
-        .collect();
+    let search_paths: Vec<std::path::PathBuf> =
+        [cwd, exe_dir, home].into_iter().flatten().collect();
 
     for dir in &search_paths {
         let env_path = dir.join(".env");
@@ -777,14 +781,14 @@ mod tests {
     #[test]
     fn returns_context_window_metadata_for_kimi_models() {
         // kimi-k2.5
-        let k25_limit = model_token_limit("kimi-k2.5")
-            .expect("kimi-k2.5 should have token limit metadata");
+        let k25_limit =
+            model_token_limit("kimi-k2.5").expect("kimi-k2.5 should have token limit metadata");
         assert_eq!(k25_limit.max_output_tokens, 16_384);
         assert_eq!(k25_limit.context_window_tokens, 256_000);
 
         // kimi-k1.5
-        let k15_limit = model_token_limit("kimi-k1.5")
-            .expect("kimi-k1.5 should have token limit metadata");
+        let k15_limit =
+            model_token_limit("kimi-k1.5").expect("kimi-k1.5 should have token limit metadata");
         assert_eq!(k15_limit.max_output_tokens, 16_384);
         assert_eq!(k15_limit.context_window_tokens, 256_000);
     }
@@ -792,11 +796,13 @@ mod tests {
     #[test]
     fn kimi_alias_resolves_to_kimi_k25_token_limits() {
         // The "kimi" alias resolves to "kimi-k2.5" via resolve_model_alias()
-        let alias_limit = model_token_limit("kimi")
-            .expect("kimi alias should resolve to kimi-k2.5 limits");
-        let direct_limit = model_token_limit("kimi-k2.5")
-            .expect("kimi-k2.5 should have limits");
-        assert_eq!(alias_limit.max_output_tokens, direct_limit.max_output_tokens);
+        let alias_limit =
+            model_token_limit("kimi").expect("kimi alias should resolve to kimi-k2.5 limits");
+        let direct_limit = model_token_limit("kimi-k2.5").expect("kimi-k2.5 should have limits");
+        assert_eq!(
+            alias_limit.max_output_tokens,
+            direct_limit.max_output_tokens
+        );
         assert_eq!(
             alias_limit.context_window_tokens,
             direct_limit.context_window_tokens
@@ -1061,6 +1067,7 @@ NO_EQUALS_LINE
                 provider,
                 env_vars,
                 hint,
+                ..
             } => {
                 assert_eq!(*provider, "Anthropic");
                 assert_eq!(*env_vars, &["ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_API_KEY"]);
@@ -1095,6 +1102,7 @@ NO_EQUALS_LINE
                 provider,
                 env_vars,
                 hint,
+                ..
             } => {
                 assert_eq!(*provider, "Anthropic");
                 assert_eq!(*env_vars, &["ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_API_KEY"]);

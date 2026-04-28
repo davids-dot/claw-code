@@ -801,7 +801,10 @@ fn strip_routing_prefix(model: &str) -> &str {
         let prefix = &model[..pos];
         // Only strip if the prefix before "/" is a known routing prefix,
         // not if "/" appears in the middle of the model name for other reasons.
-        if matches!(prefix, "openai" | "xai" | "grok" | "qwen" | "kimi" | "ali" | "glm") {
+        if matches!(
+            prefix,
+            "openai" | "xai" | "grok" | "qwen" | "kimi" | "ali" | "glm"
+        ) {
             &model[pos + 1..]
         } else {
             model
@@ -2195,9 +2198,16 @@ mod tests {
 
     #[test]
     fn provider_specific_size_limits_are_correct() {
-        assert_eq!(OpenAiCompatConfig::dashscope().max_request_body_bytes, 6_291_456); // 6MB
-        assert_eq!(OpenAiCompatConfig::openai().max_request_body_bytes, 104_857_600); // 100MB
-        assert_eq!(OpenAiCompatConfig::xai().max_request_body_bytes, 52_428_800); // 50MB
+        assert_eq!(
+            OpenAiCompatConfig::dashscope().max_request_body_bytes,
+            6_291_456
+        ); // 6MB
+        assert_eq!(
+            OpenAiCompatConfig::openai().max_request_body_bytes,
+            104_857_600
+        ); // 100MB
+        assert_eq!(OpenAiCompatConfig::xai().max_request_body_bytes, 52_428_800);
+        // 50MB
     }
 
     #[test]

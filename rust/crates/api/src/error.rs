@@ -1,7 +1,7 @@
+use std::backtrace::Backtrace;
 use std::env::VarError;
 use std::fmt::{Display, Formatter};
 use std::time::Duration;
-use std::backtrace::Backtrace;
 
 const GENERIC_FATAL_WRAPPER_MARKERS: &[&str] = &[
     "something went wrong while processing your request",
@@ -77,10 +77,7 @@ pub enum ApiError {
 impl ApiError {
     #[must_use]
     #[track_caller]
-    pub fn missing_credentials(
-        provider: &'static str,
-        env_vars: &'static [&'static str],
-    ) -> Self {
+    pub fn missing_credentials(provider: &'static str, env_vars: &'static [&'static str]) -> Self {
         Self::MissingCredentials {
             provider,
             env_vars,
