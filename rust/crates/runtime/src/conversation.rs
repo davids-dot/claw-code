@@ -95,6 +95,22 @@ impl RuntimeError {
             message: message.into(),
         }
     }
+
+    /// Checks if this error is eligible for automatic retry and self-healing (e.g., via session compaction).
+    /// This list can be expanded in the future as new retryable error types are identified.
+    #[must_use]
+    pub fn is_retryable_context_error(&self) -> bool {
+        let msg = self.message.to_lowercase();
+        let retryable_markers = [
+            // Context window limits that can be fixed by compaction
+            "maximum context length",
+            "too many tokens",
+            "context_length_exceeded",
+            "prompt is too long",
+            "context window",
+        ];
+        retryable_markers.iter().any(|marker| msg.contains(marker))
+    }
 }
 
 impl Display for RuntimeError {
@@ -358,24 +374,28 @@ where
                 Err(error) => {
                     self.record_turn_failed(iterations, &error);
 
-                    let result = compact_session(
-                        &self.session,
-                        CompactionConfig {
-                            max_estimated_tokens: 0,
-                            ..Default::default()
-                        },
-                    );
-                    if result.removed_message_count > 0 {
-                        self.session = result.compacted_session;
+                    if error.is_retryable_context_error() {
+                        let result = compact_session(
+                            &self.session,
+                            CompactionConfig {
+                                max_estimated_tokens: 0,
+                                ..Default::default()
+                            },
+                        );
+                        if result.removed_message_count > 0 {
+                            self.session = result.compacted_session;
+                        }
+
+                        let error_msg = format!("API request failed with error: {error}\nI have automatically truncated the earlier conversation history to reduce context length. Please analyze the error, review your task, and continue.");
+                        if let Err(e) = self.session.push_user_text(error_msg) {
+                            return Err(RuntimeError::new(format!(
+                                "Failed to push error message: {e}"
+                            )));
+                        }
+                        continue;
                     }
 
-                    let error_msg = format!("API request failed with error: {error}\nI have automatically truncated the earlier conversation history to reduce context length. Please analyze the error, review your task, and continue.");
-                    if let Err(e) = self.session.push_user_text(error_msg) {
-                        return Err(RuntimeError::new(format!(
-                            "Failed to push error message: {e}"
-                        )));
-                    }
-                    continue;
+                    return Err(error);
                 }
             };
             let (assistant_message, usage, turn_prompt_cache_events) =
