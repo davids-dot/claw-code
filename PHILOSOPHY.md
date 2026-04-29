@@ -1,114 +1,114 @@
-# Claw Code Philosophy
+# Claw Code 哲学
 
-## Stop Staring at the Files
+## 不要只盯着文件看
 
-If you only look at the generated files in this repository, you are looking at the wrong layer.
+如果你只看这个仓库里生成的那些文件，那你就看错了层面。
 
-The Python rewrite was a byproduct. The Rust rewrite was also a byproduct. The real thing worth studying is the **system that produced them**: a clawhip-based coordination loop where humans give direction and autonomous claws execute the work.
+Python 重写只是一个副产品。Rust 重写也同样如此。真正值得研究的是背后那个**产生这一切的系统**：一个基于 clawhip 的协同循环，人类给出方向，多个 autonomous claws 负责执行工作。
 
-Claw Code is not just a codebase. It is a public demonstration of what happens when:
+Claw Code 不只是一个代码库。它是一个公开的示范，展示了当以下条件具备时会发生什么：
 
-- a human provides clear direction,
-- multiple coding agents coordinate in parallel,
-- notification routing is pushed out of the agent context window,
-- planning, execution, review, and retry loops are automated,
-- and the human does **not** sit in a terminal micromanaging every step.
+- 人类提供清晰的方向；
+- 多个编码 agent 并行协作；
+- 通知路由被移出 agent 的上下文窗口；
+- 规划、执行、评审、重试循环实现自动化；
+- 人类**并不**坐在终端里一步步微观管理。
 
-## The Human Interface Is Discord
+## 人类的界面是 Discord
 
-The important interface here is not tmux, Vim, SSH, or a terminal multiplexer.
+重要的界面不是 tmux、Vim、SSH 或者终端复用器。
 
-The real human interface is a Discord channel.
+真正的人类界面是一个 Discord 频道。
 
-A person can type a sentence from a phone, walk away, sleep, or do something else. The claws read the directive, break it into tasks, assign roles, write code, run tests, argue over failures, recover, and push when the work passes.
+一个人可以用手机打出一句话，然后走开、睡觉、或者去做别的事。claws 读取指令，拆解成任务，分配角色，编写代码，运行测试，争论失败，自动恢复，在所有工作通过后推送代码。
 
-That is the philosophy: **humans set direction; claws perform the labor.**
+这就是哲学的核心：**人类设定方向；claws 承担劳动。**
 
-## The Three-Part System
+## 三部分系统
 
-### 1. OmX (`oh-my-codex`)
-[oh-my-codex](https://github.com/Yeachan-Heo/oh-my-codex) provides the workflow layer.
+### 1. OmX（`oh-my-codex`）
+[oh-my-codex](https://github.com/Yeachan-Heo/oh-my-codex) 提供了工作流层。
 
-It turns short directives into structured execution:
-- planning keywords
-- execution modes
-- persistent verification loops
-- parallel multi-agent workflows
+它把简短的指令转化为结构化的执行过程：
+- 规划关键词
+- 执行模式
+- 持久化的验证循环
+- 并行的多 agent 工作流
 
-This is the layer that converts a sentence into a repeatable work protocol.
+这一层将一句话转化成一个可重复的工作协议。
 
 ### 2. clawhip
-[clawhip](https://github.com/Yeachan-Heo/clawhip) is the event and notification router.
+[clawhip](https://github.com/Yeachan-Heo/clawhip) 是事件与通知路由器。
 
-It watches:
-- git commits
-- tmux sessions
-- GitHub issues and PRs
-- agent lifecycle events
-- channel delivery
+它监听：
+- git 提交
+- tmux 会话
+- GitHub issues 和 PRs
+- agent 生命周期事件
+- 频道消息分发
 
-Its job is to keep monitoring and delivery **outside** the coding agent's context window so the agents can stay focused on implementation instead of status formatting and notification routing.
+它的职责是把监控和通知的负担**放到 coding agent 的上下文窗口之外**，让 agents 能集中精力于实现本身，而不是处理状态格式化和通知路由。
 
-### 3. OmO (`oh-my-openagent`)
-[oh-my-openagent](https://github.com/code-yeongyu/oh-my-openagent) handles multi-agent coordination.
+### 3. OmO（`oh-my-openagent`）
+[oh-my-openagent](https://github.com/code-yeongyu/oh-my-openagent) 处理多 agent 协作。
 
-This is where planning, handoffs, disagreement resolution, and verification loops happen across agents.
+这里包含了规划、任务交接、分歧解决以及跨 agents 的验证循环。
 
-When Architect, Executor, and Reviewer disagree, OmO provides the structure for that loop to converge instead of collapse.
+当 Architect、Executor 和 Reviewer 出现分歧时，OmO 提供结构化框架让这个循环收敛，而不是崩溃。
 
-## The Real Bottleneck Changed
+## 真正的瓶颈已经变了
 
-The bottleneck is no longer typing speed.
+瓶颈不再是打字速度。
 
-When agent systems can rebuild a codebase in hours, the scarce resource becomes:
-- architectural clarity
-- task decomposition
-- judgment
-- taste
-- conviction about what is worth building
-- knowing which parts can be parallelized and which parts must stay constrained
+当 agent 系统可以在几小时内重新构建一个代码库时，稀缺的资源变成了：
+- 架构清晰度
+- 任务拆解能力
+- 判断力
+- 品味
+- 对什么值得构建的笃定
+- 识别哪些部分可以并行、哪些部分必须保持约束
 
-A fast agent team does not remove the need for thinking. It makes clear thinking even more valuable.
+一个快速的 agent 团队不会消除思考的需求。相反，它让清晰的思考变得更有价值。
 
-## What Claw Code Demonstrates
+## Claw Code 演示了什么
 
-Claw Code demonstrates that a repository can be:
+Claw Code 展示了一个代码库可以：
 
-- **autonomously built in public**
-- coordinated by claws/lobsters rather than human pair-programming alone
-- operated through a chat interface
-- continuously improved by structured planning/execution/review loops
-- maintained as a showcase of the coordination layer, not just the output files
+- **在公开场合被自主构建**
+- 由 claws/lobsters 协作完成，而不只是人和人结对编程
+- 通过聊天界面来驱动
+- 通过结构化的规划/执行/评审循环持续改进
+- 作为协作层的展示而存在，而不仅仅是输出文件
 
-The code is evidence.
-The coordination system is the product lesson.
+代码是证据。
+协同系统才是产品层面的经验。
 
-## What Still Matters
+## 什么依然重要
 
-As coding intelligence gets cheaper and more available, the durable differentiators are not raw coding output.
+随着编码智能变得越来越便宜和易得，持续的差异化因素不再是原始的编码产出。
 
-What still matters:
-- product taste
-- direction
-- system design
-- human trust
-- operational stability
-- judgment about what to build next
+依然重要的东西是：
+- 产品品味
+- 方向感
+- 系统设计
+- 人类的信任
+- 运营稳定性
+- 关于下一步构建什么的判断
 
-In that world, the job of the human is not to out-type the machine.
-The job of the human is to decide what deserves to exist.
+在那个世界里，人类的工作不是超过机器的打字速度。
+人类的工作是决定什么值得存在。
 
-## Short Version
+## 短版本
 
-**Claw Code is a demo of autonomous software development.**
+**Claw Code 是一个自主软件开发的演示。**
 
-Humans provide direction.
-Claws coordinate, build, test, recover, and push.
-The repository is the artifact.
-The philosophy is the system behind it.
+人类提供方向。
+Claws 协作、构建、测试、恢复、推送。
+仓库是产物。
+哲学是背后支撑这一切的系统。
 
-## Related explanation
+## 相关解释
 
-For the longer public explanation behind this philosophy, see:
+关于这一哲学的更长公开说明，请参考：
 
 - https://x.com/realsigridjin/status/2039472968624185713

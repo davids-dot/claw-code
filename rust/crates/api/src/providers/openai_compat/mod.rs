@@ -16,9 +16,16 @@ use crate::types::{
 
 use super::{preflight_message_request, Provider, ProviderFuture};
 
-pub const DEFAULT_XAI_BASE_URL: &str = "https://api.x.ai/v1";
-pub const DEFAULT_OPENAI_BASE_URL: &str = "https://api.openai.com/v1";
-pub const DEFAULT_DASHSCOPE_BASE_URL: &str = "https://dashscope.aliyuncs.com/compatible-mode/v1";
+pub mod dashscope;
+pub mod deepseek;
+pub mod openai;
+pub mod xai;
+
+pub use dashscope::DEFAULT_DASHSCOPE_BASE_URL;
+pub use deepseek::DEFAULT_DEEPSEEK_BASE_URL;
+pub use openai::DEFAULT_OPENAI_BASE_URL;
+pub use xai::DEFAULT_XAI_BASE_URL;
+
 const REQUEST_ID_HEADER: &str = "request-id";
 const ALT_REQUEST_ID_HEADER: &str = "x-request-id";
 const DEFAULT_INITIAL_BACKOFF: Duration = Duration::from_secs(1);
@@ -31,69 +38,12 @@ pub struct OpenAiCompatConfig {
     pub api_key_env: &'static str,
     pub base_url_env: &'static str,
     pub default_base_url: &'static str,
+    pub credential_env_vars: &'static [&'static str],
     /// Maximum request body size in bytes. Provider-specific limits:
     /// - `DashScope`: 6MB (`6_291_456` bytes) - observed in dogfood testing
     /// - `OpenAI`: 100MB (`104_857_600` bytes)
     /// - `xAI`: 50MB (`52_428_800` bytes)
     pub max_request_body_bytes: usize,
-}
-
-const XAI_ENV_VARS: &[&str] = &["XAI_API_KEY"];
-const OPENAI_ENV_VARS: &[&str] = &["OPENAI_API_KEY"];
-const DASHSCOPE_ENV_VARS: &[&str] = &["DASHSCOPE_API_KEY"];
-
-// Provider-specific request body size limits in bytes
-const XAI_MAX_REQUEST_BODY_BYTES: usize = 52_428_800; // 50MB
-const OPENAI_MAX_REQUEST_BODY_BYTES: usize = 104_857_600; // 100MB
-const DASHSCOPE_MAX_REQUEST_BODY_BYTES: usize = 6_291_456; // 6MB (observed limit in dogfood)
-
-impl OpenAiCompatConfig {
-    #[must_use]
-    pub const fn xai() -> Self {
-        Self {
-            provider_name: "xAI",
-            api_key_env: "XAI_API_KEY",
-            base_url_env: "XAI_BASE_URL",
-            default_base_url: DEFAULT_XAI_BASE_URL,
-            max_request_body_bytes: XAI_MAX_REQUEST_BODY_BYTES,
-        }
-    }
-
-    #[must_use]
-    pub const fn openai() -> Self {
-        Self {
-            provider_name: "OpenAI",
-            api_key_env: "OPENAI_API_KEY",
-            base_url_env: "OPENAI_BASE_URL",
-            default_base_url: DEFAULT_OPENAI_BASE_URL,
-            max_request_body_bytes: OPENAI_MAX_REQUEST_BODY_BYTES,
-        }
-    }
-
-    /// Alibaba `DashScope` compatible-mode endpoint (Qwen family models).
-    /// Uses the OpenAI-compatible REST shape at /compatible-mode/v1.
-    /// Requested via Discord #clawcode-get-help: native Alibaba API for
-    /// higher rate limits than going through `OpenRouter`.
-    #[must_use]
-    pub const fn dashscope() -> Self {
-        Self {
-            provider_name: "DashScope",
-            api_key_env: "DASHSCOPE_API_KEY",
-            base_url_env: "DASHSCOPE_BASE_URL",
-            default_base_url: DEFAULT_DASHSCOPE_BASE_URL,
-            max_request_body_bytes: DASHSCOPE_MAX_REQUEST_BODY_BYTES,
-        }
-    }
-
-    #[must_use]
-    pub fn credential_env_vars(self) -> &'static [&'static str] {
-        match self.provider_name {
-            "xAI" => XAI_ENV_VARS,
-            "OpenAI" => OPENAI_ENV_VARS,
-            "DashScope" => DASHSCOPE_ENV_VARS,
-            _ => &[],
-        }
-    }
 }
 
 #[derive(Debug, Clone)]
@@ -133,7 +83,7 @@ impl OpenAiCompatClient {
         let Some(api_key) = read_env_non_empty(config.api_key_env)? else {
             return Err(ApiError::missing_credentials(
                 config.provider_name,
-                config.credential_env_vars(),
+                config.credential_env_vars,
             ));
         };
         Ok(Self::new(api_key, config))

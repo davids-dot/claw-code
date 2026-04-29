@@ -39,6 +39,9 @@ impl ProviderClient {
                     Some(meta) if meta.auth_env == "DASHSCOPE_API_KEY" => {
                         OpenAiCompatConfig::dashscope()
                     }
+                    Some(meta) if meta.auth_env == "DEEPSEEK_API_KEY" => {
+                        OpenAiCompatConfig::deepseek()
+                    }
                     _ => {
                         if crate::providers::openai_compat::has_api_key("DASHSCOPE_API_KEY")
                             && !crate::providers::openai_compat::has_api_key("OPENAI_API_KEY")

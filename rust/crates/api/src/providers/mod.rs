@@ -223,6 +223,16 @@ pub fn metadata_for_model(model: &str) -> Option<ProviderMetadata> {
             default_base_url: openai_compat::DEFAULT_DASHSCOPE_BASE_URL,
         });
     }
+    // DeepSeek models (deepseek-coder, deepseek-chat, deepseek-reasoner).
+    // Routes deepseek/* and deepseek-* model names to DeepSeek endpoint.
+    if canonical.starts_with("deepseek/") || canonical.starts_with("deepseek-") {
+        return Some(ProviderMetadata {
+            provider: ProviderKind::OpenAi,
+            auth_env: "DEEPSEEK_API_KEY",
+            base_url_env: "DEEPSEEK_BASE_URL",
+            default_base_url: openai_compat::DEFAULT_DEEPSEEK_BASE_URL,
+        });
+    }
     None
 }
 
@@ -250,6 +260,9 @@ pub fn detect_provider_kind(model: &str) -> ProviderKind {
         return ProviderKind::Xai;
     }
     if openai_compat::has_api_key("DASHSCOPE_API_KEY") {
+        return ProviderKind::OpenAi;
+    }
+    if openai_compat::has_api_key("DEEPSEEK_API_KEY") {
         return ProviderKind::OpenAi;
     }
     // Last resort: if OPENAI_BASE_URL is set without OPENAI_API_KEY (some
@@ -362,6 +375,11 @@ const FOREIGN_PROVIDER_ENV_VARS: &[(&str, &str, &str)] = &[
         "DASHSCOPE_API_KEY",
         "Alibaba DashScope",
         "prefix your model name with `qwen/` or `qwen-` (e.g. `--model qwen-plus`) so prefix routing selects the DashScope backend",
+    ),
+    (
+        "DEEPSEEK_API_KEY",
+        "DeepSeek",
+        "prefix your model name with `deepseek/` or `deepseek-` (e.g. `--model deepseek-coder`) so prefix routing selects the DeepSeek backend",
     ),
 ];
 
