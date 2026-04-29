@@ -389,9 +389,14 @@ struct StreamState {
     message_started: bool,
     text_started: bool,
     text_finished: bool,
+    reasoning_started: bool,
+    reasoning_finished: bool,
     finished: bool,
     stop_reason: Option<String>,
     usage: Option<Usage>,
+    next_block_index: u32,
+    reasoning_block_index: Option<u32>,
+    text_block_index: Option<u32>,
     tool_calls: BTreeMap<u32, ToolCallState>,
 }
 
@@ -402,9 +407,14 @@ impl StreamState {
             message_started: false,
             text_started: false,
             text_finished: false,
+            reasoning_started: false,
+            reasoning_finished: false,
             finished: false,
             stop_reason: None,
             usage: None,
+            next_block_index: 0,
+            reasoning_block_index: None,
+            text_block_index: None,
             tool_calls: BTreeMap::new(),
         }
     }
@@ -443,20 +453,58 @@ impl StreamState {
         }
 
         for choice in chunk.choices {
+            if let Some(reasoning) = choice
+                .delta
+                .reasoning_content
+                .filter(|value| !value.is_empty())
+            {
+                if !self.reasoning_started {
+                    self.reasoning_started = true;
+                    self.reasoning_block_index = Some(self.next_block_index);
+                    events.push(StreamEvent::ContentBlockStart(ContentBlockStartEvent {
+                        index: self.next_block_index,
+                        content_block: OutputContentBlock::Thinking {
+                            thinking: String::new(),
+                            signature: None,
+                        },
+                    }));
+                    self.next_block_index += 1;
+                }
+                if let Some(idx) = self.reasoning_block_index {
+                    events.push(StreamEvent::ContentBlockDelta(ContentBlockDeltaEvent {
+                        index: idx,
+                        delta: ContentBlockDelta::ThinkingDelta {
+                            thinking: reasoning,
+                        },
+                    }));
+                }
+            }
             if let Some(content) = choice.delta.content.filter(|value| !value.is_empty()) {
+                if self.reasoning_started && !self.reasoning_finished {
+                    self.reasoning_finished = true;
+                    if let Some(idx) = self.reasoning_block_index {
+                        events.push(StreamEvent::ContentBlockStop(ContentBlockStopEvent {
+                            index: idx,
+                        }));
+                    }
+                }
                 if !self.text_started {
                     self.text_started = true;
+                    self.text_block_index = Some(self.next_block_index);
                     events.push(StreamEvent::ContentBlockStart(ContentBlockStartEvent {
-                        index: 0,
+                        index: self.next_block_index,
                         content_block: OutputContentBlock::Text {
                             text: String::new(),
                         },
                     }));
+                    self.next_block_index += 1;
                 }
-                events.push(StreamEvent::ContentBlockDelta(ContentBlockDeltaEvent {
-                    index: 0,
-                    delta: ContentBlockDelta::TextDelta { text: content },
-                }));
+                if let Some(idx) = self.text_block_index {
+                    events.push(StreamEvent::ContentBlockDelta(ContentBlockDeltaEvent {
+                        index: idx,
+                        delta: ContentBlockDelta::TextDelta { text: content },
+                    }));
+                }
             }
 
             for tool_call in choice.delta.tool_calls {
@@ -507,11 +555,22 @@ impl StreamState {
         self.finished = true;
 
         let mut events = Vec::new();
+        if self.reasoning_started && !self.reasoning_finished {
+            self.reasoning_finished = true;
+            if let Some(idx) = self.reasoning_block_index {
+                events.push(StreamEvent::ContentBlockStop(ContentBlockStopEvent {
+                    index: idx,
+                }));
+            }
+        }
+
         if self.text_started && !self.text_finished {
             self.text_finished = true;
-            events.push(StreamEvent::ContentBlockStop(ContentBlockStopEvent {
-                index: 0,
-            }));
+            if let Some(idx) = self.text_block_index {
+                events.push(StreamEvent::ContentBlockStop(ContentBlockStopEvent {
+                    index: idx,
+                }));
+            }
         }
 
         for state in self.tool_calls.values_mut() {
@@ -581,7 +640,8 @@ impl ToolCallState {
     }
 
     const fn block_index(&self) -> u32 {
-        self.openai_index + 1
+        // We use a large offset for tool calls to avoid colliding with text/reasoning blocks
+        self.openai_index + 100
     }
 
     #[allow(clippy::unnecessary_wraps)]
@@ -641,6 +701,8 @@ struct ChatMessage {
     content: Option<String>,
     #[serde(default)]
     tool_calls: Vec<ResponseToolCall>,
+    #[serde(default)]
+    reasoning_content: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -685,6 +747,8 @@ struct ChunkChoice {
 struct ChunkDelta {
     #[serde(default)]
     content: Option<String>,
+    #[serde(default)]
+    reasoning_content: Option<String>,
     #[serde(default, deserialize_with = "deserialize_null_as_empty_vec")]
     tool_calls: Vec<DeltaToolCall>,
 }
@@ -901,10 +965,12 @@ pub fn translate_message(message: &InputMessage, model: &str) -> Vec<Value> {
     match message.role.as_str() {
         "assistant" => {
             let mut text = String::new();
+            let mut reasoning = String::new();
             let mut tool_calls = Vec::new();
             for block in &message.content {
                 match block {
                     InputContentBlock::Text { text: value } => text.push_str(value),
+                    InputContentBlock::Thinking { thinking, .. } => reasoning.push_str(thinking),
                     InputContentBlock::ToolUse { id, name, input } => tool_calls.push(json!({
                         "id": id,
                         "type": "function",
@@ -916,13 +982,16 @@ pub fn translate_message(message: &InputMessage, model: &str) -> Vec<Value> {
                     InputContentBlock::ToolResult { .. } => {}
                 }
             }
-            if text.is_empty() && tool_calls.is_empty() {
+            if text.is_empty() && tool_calls.is_empty() && reasoning.is_empty() {
                 Vec::new()
             } else {
                 let mut msg = serde_json::json!({
                     "role": "assistant",
                     "content": (!text.is_empty()).then_some(text),
                 });
+                if !reasoning.is_empty() {
+                    msg["reasoning_content"] = json!(reasoning);
+                }
                 // Only include tool_calls when non-empty: some providers reject
                 // assistant messages with an explicit empty tool_calls array.
                 if !tool_calls.is_empty() {
@@ -957,6 +1026,7 @@ pub fn translate_message(message: &InputMessage, model: &str) -> Vec<Value> {
                     Some(msg)
                 }
                 InputContentBlock::ToolUse { .. } => None,
+                InputContentBlock::Thinking { .. } => None,
             })
             .collect(),
     }
@@ -1135,6 +1205,16 @@ fn normalize_response(
             "chat completion response missing choices",
         ))?;
     let mut content = Vec::new();
+    if let Some(thinking) = choice
+        .message
+        .reasoning_content
+        .filter(|value| !value.is_empty())
+    {
+        content.push(OutputContentBlock::Thinking {
+            thinking,
+            signature: None,
+        });
+    }
     if let Some(text) = choice.message.content.filter(|value| !value.is_empty()) {
         content.push(OutputContentBlock::Text { text });
     }

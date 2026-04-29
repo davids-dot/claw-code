@@ -3158,8 +3158,12 @@ impl ApiClient for DefaultRuntimeClient {
                                 input.push_str(&partial_json);
                             }
                         }
-                        ContentBlockDelta::ThinkingDelta { .. }
-                        | ContentBlockDelta::SignatureDelta { .. } => {}
+                        ContentBlockDelta::ThinkingDelta { thinking } => {
+                            events.push(AssistantEvent::ThinkingDelta(thinking));
+                        }
+                        ContentBlockDelta::SignatureDelta { signature } => {
+                            events.push(AssistantEvent::SignatureDelta(signature));
+                        }
                     },
                     ApiStreamEvent::ContentBlockStop(_) => {
                         if let Some(rendered) = markdown_stream.flush(&renderer) {
@@ -3819,7 +3823,15 @@ fn push_output_block(
             };
             *pending_tool = Some((id, name, initial_input));
         }
-        OutputContentBlock::Thinking { .. } | OutputContentBlock::RedactedThinking { .. } => {}
+        OutputContentBlock::Thinking { thinking, signature } => {
+            if !thinking.is_empty() {
+                events.push(AssistantEvent::ThinkingDelta(thinking));
+            }
+            if let Some(sig) = signature {
+                events.push(AssistantEvent::SignatureDelta(sig));
+            }
+        }
+        OutputContentBlock::RedactedThinking { .. } => {}
     }
     Ok(())
 }
@@ -5050,7 +5062,7 @@ mod tests {
     }
 
     #[test]
-    fn response_to_events_ignores_thinking_blocks() {
+    fn response_to_events_preserves_thinking_blocks() {
         let mut out = Vec::new();
         let events = response_to_events(
             MessageResponse {
@@ -5083,8 +5095,15 @@ mod tests {
 
         assert!(matches!(
             &events[0],
+            AssistantEvent::ThinkingDelta(text) if text == "step 1"
+        ));
+        assert!(matches!(
+            &events[1],
+            AssistantEvent::SignatureDelta(sig) if sig == "sig_123"
+        ));
+        assert!(matches!(
+            &events[2],
             AssistantEvent::TextDelta(text) if text == "Final answer"
         ));
-        assert!(!String::from_utf8(out).expect("utf8").contains("step 1"));
     }
 }

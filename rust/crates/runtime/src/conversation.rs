@@ -29,6 +29,8 @@ pub struct ApiRequest {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AssistantEvent {
     TextDelta(String),
+    ThinkingDelta(String),
+    SignatureDelta(String),
     ToolUse {
         id: String,
         name: String,
@@ -760,15 +762,33 @@ fn build_assistant_message(
     RuntimeError,
 > {
     let mut text = String::new();
+    let mut thinking = String::new();
+    let mut signature = None;
     let mut blocks = Vec::new();
     let mut prompt_cache_events = Vec::new();
     let mut finished = false;
     let mut usage = None;
 
+    let flush_thinking_block =
+        |thinking: &mut String, signature: &mut Option<String>, blocks: &mut Vec<ContentBlock>| {
+            if !thinking.is_empty() {
+                blocks.push(ContentBlock::Thinking {
+                    thinking: std::mem::take(thinking),
+                    signature: signature.take(),
+                });
+            }
+        };
+
     for event in events {
         match event {
-            AssistantEvent::TextDelta(delta) => text.push_str(&delta),
+            AssistantEvent::TextDelta(delta) => {
+                flush_thinking_block(&mut thinking, &mut signature, &mut blocks);
+                text.push_str(&delta);
+            }
+            AssistantEvent::ThinkingDelta(delta) => thinking.push_str(&delta),
+            AssistantEvent::SignatureDelta(delta) => signature = Some(delta),
             AssistantEvent::ToolUse { id, name, input } => {
+                flush_thinking_block(&mut thinking, &mut signature, &mut blocks);
                 flush_text_block(&mut text, &mut blocks);
                 blocks.push(ContentBlock::ToolUse { id, name, input });
             }
@@ -780,6 +800,7 @@ fn build_assistant_message(
         }
     }
 
+    flush_thinking_block(&mut thinking, &mut signature, &mut blocks);
     flush_text_block(&mut text, &mut blocks);
 
     if !finished {

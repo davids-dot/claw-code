@@ -18,7 +18,7 @@
 2. 使用deepseek的apiKey, 模型 qwen-plus 
   ```
     export DEEPSEEK_API_KEY=sk-your-key
-    export DEEPSEEK_MODEL="qwen-plus"
+    export DEEPSEEK_MODEL="deepseek-v4-flash"
 
     ./claw  
   ```

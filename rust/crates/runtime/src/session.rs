@@ -30,6 +30,10 @@ pub enum ContentBlock {
     Text {
         text: String,
     },
+    Thinking {
+        thinking: String,
+        signature: Option<String>,
+    },
     ToolUse {
         id: String,
         name: String,
@@ -737,6 +741,19 @@ impl ContentBlock {
                 object.insert("type".to_string(), JsonValue::String("text".to_string()));
                 object.insert("text".to_string(), JsonValue::String(text.clone()));
             }
+            Self::Thinking {
+                thinking,
+                signature,
+            } => {
+                object.insert(
+                    "type".to_string(),
+                    JsonValue::String("thinking".to_string()),
+                );
+                object.insert("thinking".to_string(), JsonValue::String(thinking.clone()));
+                if let Some(sig) = signature {
+                    object.insert("signature".to_string(), JsonValue::String(sig.clone()));
+                }
+            }
             Self::ToolUse { id, name, input } => {
                 object.insert(
                     "type".to_string(),
@@ -782,6 +799,13 @@ impl ContentBlock {
         {
             "text" => Ok(Self::Text {
                 text: required_string(object, "text")?,
+            }),
+            "thinking" => Ok(Self::Thinking {
+                thinking: required_string(object, "thinking")?,
+                signature: object
+                    .get("signature")
+                    .and_then(JsonValue::as_str)
+                    .map(ToOwned::to_owned),
             }),
             "tool_use" => Ok(Self::ToolUse {
                 id: required_string(object, "id")?,

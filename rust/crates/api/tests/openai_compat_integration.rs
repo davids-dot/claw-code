@@ -187,38 +187,38 @@ async fn stream_message_normalizes_text_and_multiple_tool_calls() {
     assert!(matches!(
         events[3],
         StreamEvent::ContentBlockStart(ContentBlockStartEvent {
-            index: 1,
+            index: 100,
             content_block: OutputContentBlock::ToolUse { .. },
         })
     ));
     assert!(matches!(
         events[4],
         StreamEvent::ContentBlockDelta(ContentBlockDeltaEvent {
-            index: 1,
+            index: 100,
             delta: ContentBlockDelta::InputJsonDelta { .. },
         })
     ));
     assert!(matches!(
         events[5],
         StreamEvent::ContentBlockStart(ContentBlockStartEvent {
-            index: 2,
+            index: 101,
             content_block: OutputContentBlock::ToolUse { .. },
         })
     ));
     assert!(matches!(
         events[6],
         StreamEvent::ContentBlockDelta(ContentBlockDeltaEvent {
-            index: 2,
+            index: 101,
             delta: ContentBlockDelta::InputJsonDelta { .. },
         })
     ));
     assert!(matches!(
         events[7],
-        StreamEvent::ContentBlockStop(ContentBlockStopEvent { index: 1 })
+        StreamEvent::ContentBlockStop(ContentBlockStopEvent { index: 100 })
     ));
     assert!(matches!(
         events[8],
-        StreamEvent::ContentBlockStop(ContentBlockStopEvent { index: 2 })
+        StreamEvent::ContentBlockStop(ContentBlockStopEvent { index: 101 })
     ));
     assert!(matches!(
         events[9],
