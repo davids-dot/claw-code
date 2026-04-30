@@ -159,12 +159,7 @@ fn main() {
 error: {message}"
                 );
             } else {
-                eprintln!(
-                    "[error-kind: {kind}]
-error: {message}
-
-Run `claw --help` for usage."
-                );
+                eprintln!("[error-kind: {kind}]\nerror: {message}\n\nRun `claw --help` for usage.");
             }
         }
         std::process::exit(1);
