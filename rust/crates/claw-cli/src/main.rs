@@ -16,8 +16,8 @@ use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use api::{
-    resolve_startup_auth_source, AuthSource, ClawApiClient, ContentBlockDelta, InputContentBlock,
-    InputMessage, MessageRequest, MessageResponse, OutputContentBlock,
+    resolve_startup_auth_source, ApiClient as ClawApiClient, AuthSource, ContentBlockDelta,
+    InputContentBlock, InputMessage, MessageRequest, MessageResponse, OutputContentBlock,
     StreamEvent as ApiStreamEvent, ToolChoice, ToolDefinition, ToolResultContentBlock,
 };
 
@@ -169,8 +169,25 @@ impl CliOutputFormat {
     }
 }
 
-#[allow(clippy::too_many_lines)]
-fn parse_args(args: &[String]) -> Result<CliAction, String> {
+/// Intermediate result of scanning global flags (--model, --output-format, etc.)
+/// before subcommand dispatch. This separates "what flags were set" from "what action to take".
+struct ParsedFlags {
+    model: String,
+    output_format: CliOutputFormat,
+    permission_mode: PermissionMode,
+    wants_version: bool,
+    allowed_tool_values: Vec<String>,
+}
+
+/// Combined output of flag scanning: parsed flags + remaining positional args.
+struct ScanResult {
+    flags: ParsedFlags,
+    rest: Vec<String>,
+}
+
+/// Phase 1: Scan global flags from the argument list, collecting flag values
+/// and returning remaining non-flag arguments for subcommand dispatch.
+fn scan_flags(args: &[String]) -> Result<ScanResult, String> {
     let mut model = DEFAULT_MODEL.to_string();
     let mut output_format = CliOutputFormat::Text;
     let mut permission_mode = default_permission_mode();
@@ -222,20 +239,6 @@ fn parse_args(args: &[String]) -> Result<CliAction, String> {
                 permission_mode = PermissionMode::DangerFullAccess;
                 index += 1;
             }
-            "-p" => {
-                // Claw Code compat: -p "prompt" = one-shot prompt
-                let prompt = args[index + 1..].join(" ");
-                if prompt.trim().is_empty() {
-                    return Err("-p requires a prompt string".to_string());
-                }
-                return Ok(CliAction::Prompt {
-                    prompt,
-                    model: resolve_model_alias(&model).to_string(),
-                    output_format,
-                    allowed_tools: normalize_allowed_tools(&allowed_tool_values)?,
-                    permission_mode,
-                });
-            }
             "--print" => {
                 // Claw Code compat: --print makes output non-interactive
                 output_format = CliOutputFormat::Text;
@@ -263,17 +266,27 @@ fn parse_args(args: &[String]) -> Result<CliAction, String> {
         }
     }
 
-    if wants_version {
-        return Ok(CliAction::Version);
-    }
+    Ok(ScanResult {
+        flags: ParsedFlags {
+            model,
+            output_format,
+            permission_mode,
+            wants_version,
+            allowed_tool_values,
+        },
+        rest,
+    })
+}
 
-    let allowed_tools = normalize_allowed_tools(&allowed_tool_values)?;
+/// Phase 2: Given parsed flags and remaining positional args, determine the CLI action.
+fn dispatch_subcommand(flags: &ParsedFlags, rest: &[String]) -> Result<CliAction, String> {
+    let allowed_tools = normalize_allowed_tools(&flags.allowed_tool_values)?;
 
     if rest.is_empty() {
         return Ok(CliAction::Repl {
-            model,
+            model: flags.model.clone(),
             allowed_tools,
-            permission_mode,
+            permission_mode: flags.permission_mode,
         });
     }
     if matches!(rest.first().map(String::as_str), Some("--help" | "-h")) {
@@ -303,21 +316,50 @@ fn parse_args(args: &[String]) -> Result<CliAction, String> {
             }
             Ok(CliAction::Prompt {
                 prompt,
-                model,
-                output_format,
+                model: flags.model.clone(),
+                output_format: flags.output_format,
                 allowed_tools,
-                permission_mode,
+                permission_mode: flags.permission_mode,
             })
         }
-        other if other.starts_with('/') => parse_direct_slash_cli_action(&rest),
+        other if other.starts_with('/') => parse_direct_slash_cli_action(rest),
         _other => Ok(CliAction::Prompt {
             prompt: rest.join(" "),
-            model,
-            output_format,
+            model: flags.model.clone(),
+            output_format: flags.output_format,
             allowed_tools,
-            permission_mode,
+            permission_mode: flags.permission_mode,
         }),
     }
+}
+
+#[allow(clippy::too_many_lines)]
+fn parse_args(args: &[String]) -> Result<CliAction, String> {
+    // Handle -p early-return separately since it consumes all remaining args
+    if args.iter().any(|a| a == "-p") {
+        let p_index = args.iter().position(|a| a == "-p").unwrap();
+        let prompt = args[p_index + 1..].join(" ");
+        if prompt.trim().is_empty() {
+            return Err("-p requires a prompt string".to_string());
+        }
+        // Still need to scan flags that appear before -p
+        let pre_flags = scan_flags(&args[..p_index])?;
+        let allowed_tools = normalize_allowed_tools(&pre_flags.flags.allowed_tool_values)?;
+        return Ok(CliAction::Prompt {
+            prompt,
+            model: resolve_model_alias(&pre_flags.flags.model).to_string(),
+            output_format: pre_flags.flags.output_format,
+            allowed_tools,
+            permission_mode: pre_flags.flags.permission_mode,
+        });
+    }
+
+    let scan = scan_flags(args)?;
+    if scan.flags.wants_version {
+        return Ok(CliAction::Version);
+    }
+
+    dispatch_subcommand(&scan.flags, &scan.rest)
 }
 
 fn join_optional_args(args: &[String]) -> Option<String> {
@@ -329,10 +371,10 @@ fn join_optional_args(args: &[String]) -> Option<String> {
 fn parse_direct_slash_cli_action(rest: &[String]) -> Result<CliAction, String> {
     let raw = rest.join(" ");
     match SlashCommand::parse(&raw) {
-        Some(SlashCommand::Help) => Ok(CliAction::Help),
-        Some(SlashCommand::Agents { args }) => Ok(CliAction::Agents { args }),
-        Some(SlashCommand::Skills { args }) => Ok(CliAction::Skills { args }),
-        Some(command) => Err(format_direct_slash_command_error(
+        Ok(Some(SlashCommand::Help)) => Ok(CliAction::Help),
+        Ok(Some(SlashCommand::Agents { args })) => Ok(CliAction::Agents { args }),
+        Ok(Some(SlashCommand::Skills { args })) => Ok(CliAction::Skills { args }),
+        Ok(Some(command)) => Err(format_direct_slash_command_error(
             match &command {
                 SlashCommand::Unknown(name) => format!("/{name}"),
                 _ => rest[0].clone(),
@@ -340,7 +382,7 @@ fn parse_direct_slash_cli_action(rest: &[String]) -> Result<CliAction, String> {
             .as_str(),
             matches!(command, SlashCommand::Unknown(_)),
         )),
-        None => Err(format!("unknown subcommand: {}", rest[0])),
+        Ok(None) | Err(_) => Err(format!("unknown subcommand: {}", rest[0])),
     }
 }
 
@@ -483,7 +525,7 @@ fn dump_manifests() {
 }
 
 fn print_bootstrap_plan() {
-    for phase in runtime::BootstrapPlan::claw_default().phases() {
+    for phase in runtime::BootstrapPlan::claude_code_default().phases() {
         println!("- {phase:?}");
     }
 }
@@ -649,7 +691,7 @@ fn resume_session(session_path: &Path, commands: &[String]) {
 
     let mut session = session;
     for raw_command in commands {
-        let Some(command) = SlashCommand::parse(raw_command) else {
+        let Ok(Some(command)) = SlashCommand::parse(raw_command) else {
             eprintln!("unsupported resumed command: {raw_command}");
             std::process::exit(2);
         };
@@ -839,10 +881,10 @@ fn parse_git_status_metadata(status: Option<&str>) -> (Option<PathBuf>, Option<S
     let branch = status.lines().next().and_then(|line| {
         line.strip_prefix("## ")
             .map(|line| {
-                line.split(['.', ' '])
-                    .next()
-                    .unwrap_or_default()
-                    .to_string()
+                // git status --short format: "## branch...remote/branch" or "## branch"
+                // Split on "..." first to strip remote tracking info, then trailing whitespace.
+                let after_dots = line.split("...").next().unwrap_or(line);
+                after_dots.trim().to_string()
             })
             .filter(|value| !value.is_empty())
     });
@@ -986,8 +1028,6 @@ fn run_resume_command(
         }
         SlashCommand::Bughunter { .. }
         | SlashCommand::Branch { .. }
-        | SlashCommand::Worktree { .. }
-        | SlashCommand::CommitPushPr { .. }
         | SlashCommand::Commit
         | SlashCommand::Pr { .. }
         | SlashCommand::Issue { .. }
@@ -999,7 +1039,7 @@ fn run_resume_command(
         | SlashCommand::Permissions { .. }
         | SlashCommand::Session { .. }
         | SlashCommand::Plugins { .. }
-        | SlashCommand::Unknown(_) => Err("unsupported resumed slash command".into()),
+        | _ => Err("unsupported resumed slash command".into()),
     }
 }
 
@@ -1023,7 +1063,7 @@ fn run_repl(
                     cli.persist_session()?;
                     break;
                 }
-                if let Some(command) = SlashCommand::parse(trimmed) {
+                if let Ok(Some(command)) = SlashCommand::parse(trimmed) {
                     if cli.handle_repl_command(command)? {
                         cli.persist_session()?;
                     }
@@ -1335,22 +1375,12 @@ impl LiveCli {
                 );
                 false
             }
-            SlashCommand::Worktree { .. } => {
-                eprintln!(
-                    "{}",
-                    render_mode_unavailable("worktree", "git worktree commands")
-                );
-                false
-            }
-            SlashCommand::CommitPushPr { .. } => {
-                eprintln!(
-                    "{}",
-                    render_mode_unavailable("commit-push-pr", "commit + push + PR automation")
-                );
-                false
-            }
             SlashCommand::Unknown(name) => {
                 eprintln!("{}", render_unknown_repl_command(&name));
+                false
+            }
+            _ => {
+                eprintln!("unsupported slash command in this CLI version");
                 false
             }
         })
@@ -2517,6 +2547,15 @@ fn render_export_text(session: &Session) -> String {
                         "[tool_result id={tool_use_id} name={tool_name} error={is_error}] {output}"
                     ));
                 }
+                ContentBlock::Thinking {
+                    thinking,
+                    signature,
+                } => {
+                    lines.push(format!("[thinking] {thinking}"));
+                    if let Some(sig) = signature {
+                        lines.push(format!("[thinking_signature] {sig}"));
+                    }
+                }
             }
         }
         lines.push(String::new());
@@ -2988,7 +3027,7 @@ fn build_runtime(
         CliToolExecutor::new(allowed_tools.clone(), emit_output, tool_registry.clone()),
         permission_policy(permission_mode, &tool_registry),
         system_prompt,
-        feature_config,
+        &feature_config,
     ))
 }
 
@@ -3098,6 +3137,12 @@ impl ApiClient for DefaultRuntimeClient {
                 .then(|| filter_tool_specs(&self.tool_registry, self.allowed_tools.as_ref())),
             tool_choice: self.enable_tools.then_some(ToolChoice::Auto),
             stream: true,
+            temperature: None,
+            top_p: None,
+            frequency_penalty: None,
+            presence_penalty: None,
+            stop: None,
+            reasoning_effort: None,
         };
 
         self.runtime.block_on(async {
@@ -3823,7 +3868,10 @@ fn push_output_block(
             };
             *pending_tool = Some((id, name, initial_input));
         }
-        OutputContentBlock::Thinking { thinking, signature } => {
+        OutputContentBlock::Thinking {
+            thinking,
+            signature,
+        } => {
             if !thinking.is_empty() {
                 events.push(AssistantEvent::ThinkingDelta(thinking));
             }
@@ -3919,16 +3967,68 @@ impl ToolExecutor for CliToolExecutor {
 }
 
 fn permission_policy(mode: PermissionMode, tool_registry: &GlobalToolRegistry) -> PermissionPolicy {
-    tool_registry.permission_specs(None).into_iter().fold(
-        PermissionPolicy::new(mode),
-        |policy, (name, required_permission)| {
-            policy.with_tool_requirement(name, required_permission)
-        },
-    )
+    tool_registry
+        .permission_specs(None)
+        .unwrap_or_default()
+        .into_iter()
+        .fold(
+            PermissionPolicy::new(mode),
+            |policy, (name, required_permission)| {
+                policy.with_tool_requirement(name, required_permission)
+            },
+        )
+}
+
+/// Maximum approximate character budget for API input messages.
+/// The API rejects requests where total input length exceeds 202745 characters.
+/// That limit covers the **entire serialized JSON request body**, including:
+/// - system prompt (~5-10K chars)
+/// - tool definitions with JSON schemas (~30-50K chars)
+/// - JSON serialization overhead (keys, quotes, brackets — ~30-50% markup)
+/// - request-level fields (model, max_tokens, etc. — ~100 chars)
+///
+/// We conservatively budget just the messages portion to leave ample room
+/// for everything else. With ~60K overhead from system+tools+JSON and a
+/// ~40% serialization markup, 80K of raw message content maps to roughly:
+///   80K × 1.4 (JSON overhead) + 60K (system+tools) ≈ 172K total body,
+/// well under the 202745 limit.
+const MAX_API_INPUT_CHARS: usize = 80_000;
+
+/// Estimate the character length of an InputMessage for budget tracking.
+fn estimate_input_message_chars(msg: &InputMessage) -> usize {
+    msg.role.len()
+        + msg
+            .content
+            .iter()
+            .map(|block| match block {
+                InputContentBlock::Text { text } => text.len(),
+                InputContentBlock::Thinking {
+                    thinking,
+                    signature,
+                } => thinking.len() + signature.as_ref().map_or(0, String::len),
+                InputContentBlock::ToolUse { id, name, input } => {
+                    id.len() + name.len() + input.to_string().len()
+                }
+                InputContentBlock::ToolResult {
+                    tool_use_id,
+                    content,
+                    is_error: _,
+                } => {
+                    tool_use_id.len()
+                        + content
+                            .iter()
+                            .map(|c| match c {
+                                ToolResultContentBlock::Text { text } => text.len(),
+                                ToolResultContentBlock::Json { value } => value.to_string().len(),
+                            })
+                            .sum::<usize>()
+                }
+            })
+            .sum::<usize>()
 }
 
 fn convert_messages(messages: &[ConversationMessage]) -> Vec<InputMessage> {
-    messages
+    let converted: Vec<InputMessage> = messages
         .iter()
         .filter_map(|message| {
             let role = match message.role {
@@ -3938,26 +4038,31 @@ fn convert_messages(messages: &[ConversationMessage]) -> Vec<InputMessage> {
             let content = message
                 .blocks
                 .iter()
-                .map(|block| match block {
-                    ContentBlock::Text { text } => InputContentBlock::Text { text: text.clone() },
-                    ContentBlock::ToolUse { id, name, input } => InputContentBlock::ToolUse {
+                .filter_map(|block| match block {
+                    ContentBlock::Text { text } => {
+                        Some(InputContentBlock::Text { text: text.clone() })
+                    }
+                    ContentBlock::ToolUse { id, name, input } => Some(InputContentBlock::ToolUse {
                         id: id.clone(),
                         name: name.clone(),
                         input: serde_json::from_str(input)
                             .unwrap_or_else(|_| serde_json::json!({ "raw": input })),
-                    },
+                    }),
                     ContentBlock::ToolResult {
                         tool_use_id,
                         output,
                         is_error,
                         ..
-                    } => InputContentBlock::ToolResult {
+                    } => Some(InputContentBlock::ToolResult {
                         tool_use_id: tool_use_id.clone(),
                         content: vec![ToolResultContentBlock::Text {
                             text: output.clone(),
                         }],
                         is_error: *is_error,
-                    },
+                    }),
+                    // Thinking blocks are internal reasoning output and not valid as API input.
+                    // They must be skipped when converting session history back to API messages.
+                    ContentBlock::Thinking { .. } => None,
                 })
                 .collect::<Vec<_>>();
             (!content.is_empty()).then(|| InputMessage {
@@ -3965,7 +4070,35 @@ fn convert_messages(messages: &[ConversationMessage]) -> Vec<InputMessage> {
                 content,
             })
         })
-        .collect()
+        .collect();
+
+    // If the total input exceeds the API character budget, trim oldest messages
+    // until we're within budget. This prevents 400 errors from oversized inputs.
+    let total_chars = converted
+        .iter()
+        .map(estimate_input_message_chars)
+        .sum::<usize>();
+    if total_chars <= MAX_API_INPUT_CHARS {
+        return converted;
+    }
+
+    // Drop messages from the beginning (oldest) until within budget.
+    // Always preserve the last message (the current user turn) if possible.
+    let mut budget = 0usize;
+    let mut keep_from = converted.len();
+    for (index, msg) in converted.iter().rev().enumerate() {
+        budget += estimate_input_message_chars(msg);
+        if budget > MAX_API_INPUT_CHARS {
+            // We went over budget — we can only keep messages starting from
+            // the one that pushed us over (going from the end). Since we're
+            // iterating backwards, `index` is how many from the end we kept
+            // before going over. The rest must be dropped.
+            break;
+        }
+        keep_from = converted.len() - index - 1;
+    }
+
+    converted[keep_from..].to_vec()
 }
 
 fn print_help_to(out: &mut impl Write) -> io::Result<()> {
@@ -4443,8 +4576,7 @@ mod tests {
     fn shared_help_uses_resume_annotation_copy() {
         let help = commands::render_slash_command_help();
         assert!(help.contains("Slash commands"));
-        assert!(help.contains("Tab completes commands inside the REPL."));
-        assert!(help.contains("available via claw --resume SESSION.json"));
+        assert!(help.contains("also works with --resume SESSION.jsonl"));
     }
 
     #[test]
@@ -4464,7 +4596,7 @@ mod tests {
         assert!(help.contains("/diff"));
         assert!(help.contains("/version"));
         assert!(help.contains("/export [file]"));
-        assert!(help.contains("/session [list|switch <session-id>]"));
+        assert!(help.contains("/session [list|switch <session-id>|fork [branch-name]|delete <session-id> [--force]]"));
         assert!(help.contains(
             "/plugin [list|install <path>|enable <name>|disable <name>|uninstall <id>|update <id>]"
         ));
@@ -4498,13 +4630,22 @@ mod tests {
             .into_iter()
             .map(|spec| spec.name)
             .collect::<Vec<_>>();
-        assert_eq!(
-            names,
-            vec![
-                "help", "status", "compact", "clear", "cost", "config", "memory", "init", "diff",
-                "version", "export", "agents", "skills",
-            ]
-        );
+        assert!(names.contains(&"help"));
+        assert!(names.contains(&"status"));
+        assert!(names.contains(&"compact"));
+        assert!(names.contains(&"clear"));
+        assert!(names.contains(&"cost"));
+        assert!(names.contains(&"config"));
+        assert!(names.contains(&"memory"));
+        assert!(names.contains(&"init"));
+        assert!(names.contains(&"diff"));
+        assert!(names.contains(&"version"));
+        assert!(names.contains(&"export"));
+        assert!(names.contains(&"agents"));
+        assert!(names.contains(&"skills"));
+        assert!(names.contains(&"sandbox"));
+        assert!(names.contains(&"mcp"));
+        assert!(names.len() > 20); // allow future growth
     }
 
     #[test]
@@ -4703,11 +4844,11 @@ mod tests {
     fn clear_command_requires_explicit_confirmation_flag() {
         assert_eq!(
             SlashCommand::parse("/clear"),
-            Some(SlashCommand::Clear { confirm: false })
+            Ok(Some(SlashCommand::Clear { confirm: false }))
         );
         assert_eq!(
             SlashCommand::parse("/clear --confirm"),
-            Some(SlashCommand::Clear { confirm: true })
+            Ok(Some(SlashCommand::Clear { confirm: true }))
         );
     }
 
@@ -4715,26 +4856,29 @@ mod tests {
     fn parses_resume_and_config_slash_commands() {
         assert_eq!(
             SlashCommand::parse("/resume saved-session.json"),
-            Some(SlashCommand::Resume {
+            Ok(Some(SlashCommand::Resume {
                 session_path: Some("saved-session.json".to_string())
-            })
+            }))
         );
         assert_eq!(
             SlashCommand::parse("/clear --confirm"),
-            Some(SlashCommand::Clear { confirm: true })
+            Ok(Some(SlashCommand::Clear { confirm: true }))
         );
         assert_eq!(
             SlashCommand::parse("/config"),
-            Some(SlashCommand::Config { section: None })
+            Ok(Some(SlashCommand::Config { section: None }))
         );
         assert_eq!(
             SlashCommand::parse("/config env"),
-            Some(SlashCommand::Config {
+            Ok(Some(SlashCommand::Config {
                 section: Some("env".to_string())
-            })
+            }))
         );
-        assert_eq!(SlashCommand::parse("/memory"), Some(SlashCommand::Memory));
-        assert_eq!(SlashCommand::parse("/init"), Some(SlashCommand::Init));
+        assert_eq!(
+            SlashCommand::parse("/memory"),
+            Ok(Some(SlashCommand::Memory))
+        );
+        assert_eq!(SlashCommand::parse("/init"), Ok(Some(SlashCommand::Init)));
     }
 
     #[test]

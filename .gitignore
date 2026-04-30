@@ -9,6 +9,11 @@ archive/
 .claw/settings.local.json
 .claw/sessions/
 .clawhip/
+.claude/
+.clawd-todos.json
+.learnings/
+.sandbox-home/
+.sandbox-tmp/
 status-help.txt
 
 
