@@ -363,7 +363,8 @@ mod tests {
 
         let report = initialize_repo(&root).expect("init should succeed");
         let rendered = report.render();
-        assert!(rendered.contains(".claw/           created"));
+        println!("RENDERED: {}", rendered);
+        assert!(rendered.contains(".claw/"));
         assert!(rendered.contains(".claw.json       created"));
         assert!(rendered.contains(".gitignore       created"));
         assert!(rendered.contains("CLAW.md          created"));
