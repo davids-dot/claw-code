@@ -21,10 +21,12 @@ mod input;
 mod model;
 mod models;
 mod permission;
+mod api_client;
 mod progress;
 mod repl;
 mod render;
 
+pub(crate) use api_client::*;
 pub(crate) use args::*;
 pub(crate) use constants::*;
 pub(crate) use doctor::*;
@@ -229,8 +231,6 @@ fn merge_prompt_with_stdin(prompt: &str, stdin_content: Option<&str>) -> String 
 
 fn run() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<String> = env::args().skip(1).collect();
-    // 添加打印args 的日志
-    println!("args: {:?}", args);
 
     match parse_args(&args)? {
         // 导出所有工具/插件的 manifest 清单文件到指定目录
@@ -3092,427 +3092,7 @@ fn build_runtime_with_plugin_state(
     Ok(BuiltRuntime::new(runtime, plugin_registry, mcp_state))
 }
 
-// NOTE: Despite the historical name `AnthropicRuntimeClient`, this struct
-// now holds an `ApiProviderClient` which dispatches to Anthropic, xAI,
-// OpenAI, or DashScope at construction time based on
-// `detect_provider_kind(&model)`. The struct name is kept to avoid
-// churning `BuiltRuntime` and every Deref/DerefMut site that references
-// it. See ROADMAP #29 for the provider-dispatch routing fix.
-struct AnthropicRuntimeClient {
-    runtime: tokio::runtime::Runtime,
-    client: ApiProviderClient,
-    session_id: String,
-    model: String,
-    enable_tools: bool,
-    emit_output: bool,
-    allowed_tools: Option<AllowedToolSet>,
-    tool_registry: GlobalToolRegistry,
-    progress_reporter: Option<InternalPromptProgressReporter>,
-    reasoning_effort: Option<String>,
-}
 
-impl AnthropicRuntimeClient {
-    fn new(
-        session_id: &str,
-        model: String,
-        enable_tools: bool,
-        emit_output: bool,
-        allowed_tools: Option<AllowedToolSet>,
-        tool_registry: GlobalToolRegistry,
-        progress_reporter: Option<InternalPromptProgressReporter>,
-    ) -> Result<Self, Box<dyn std::error::Error>> {
-        // Dispatch to the correct provider at construction time.
-        // `ApiProviderClient` (exposed by the api crate as
-        // `ProviderClient`) is an enum over Anthropic / xAI / OpenAI
-        // variants, where xAI and OpenAI both use the OpenAI-compat
-        // wire format under the hood. We consult
-        // `detect_provider_kind(&resolved_model)` so model-name prefix
-        // routing (`openai/`, `gpt-`, `grok`, `qwen/`) wins over
-        // env-var presence.
-        //
-        // For Anthropic we build the client directly instead of going
-        // through `ApiProviderClient::from_model_with_anthropic_auth`
-        // so we can explicitly apply `api::read_base_url()` — that
-        // reads `ANTHROPIC_BASE_URL` and is required for the local
-        // mock-server test harness
-        // (`crates/rusty-claude-cli/tests/compact_output.rs`) to point
-        // claw at its fake Anthropic endpoint. We also attach a
-        // session-scoped prompt cache on the Anthropic path; the
-        // prompt cache is Anthropic-only so non-Anthropic variants
-        // skip it.
-        let resolved_model = api::resolve_model_alias(&model);
-        let client = match detect_provider_kind(&resolved_model) {
-            ProviderKind::Anthropic => {
-                let auth = resolve_cli_auth_source()?;
-                let inner = AnthropicClient::from_auth(auth)
-                    .with_base_url(api::read_base_url())
-                    .with_prompt_cache(PromptCache::new(session_id));
-                ApiProviderClient::Anthropic(inner)
-            }
-            ProviderKind::Xai | ProviderKind::OpenAi => {
-                // The api crate's `ProviderClient::from_model_with_anthropic_auth`
-                // with `None` for the anthropic auth routes via
-                // `detect_provider_kind` and builds an
-                // `OpenAiCompatClient::from_env` with the matching
-                // `OpenAiCompatConfig` (openai / xai / dashscope).
-                // That reads the correct API-key env var and BASE_URL
-                // override internally, so this one call covers OpenAI,
-                // OpenRouter, xAI, DashScope, Ollama, and any other
-                // OpenAI-compat endpoint users configure via
-                // `OPENAI_BASE_URL` / `XAI_BASE_URL` / `DASHSCOPE_BASE_URL`.
-                ApiProviderClient::from_model_with_anthropic_auth(&resolved_model, None)?
-            }
-        };
-        Ok(Self {
-            runtime: tokio::runtime::Runtime::new()?,
-            client,
-            session_id: session_id.to_string(),
-            model,
-            enable_tools,
-            emit_output,
-            allowed_tools,
-            tool_registry,
-            progress_reporter,
-            reasoning_effort: None,
-        })
-    }
-
-    fn set_reasoning_effort(&mut self, effort: Option<String>) {
-        self.reasoning_effort = effort;
-    }
-}
-
-fn resolve_cli_auth_source() -> Result<AuthSource, Box<dyn std::error::Error>> {
-    Ok(resolve_cli_auth_source_for_cwd()?)
-}
-
-fn resolve_cli_auth_source_for_cwd() -> Result<AuthSource, api::ApiError> {
-    resolve_startup_auth_source(|| Ok(None))
-}
-
-impl ApiClient for AnthropicRuntimeClient {
-    #[allow(clippy::too_many_lines)]
-    fn stream(&mut self, request: ApiRequest) -> Result<Vec<AssistantEvent>, RuntimeError> {
-        if let Some(progress_reporter) = &self.progress_reporter {
-            progress_reporter.mark_model_phase();
-        }
-        let is_post_tool = request_ends_with_tool_result(&request);
-        let message_request = MessageRequest {
-            model: self.model.clone(),
-            max_tokens: max_tokens_for_model(&self.model),
-            messages: convert_messages(&request.messages),
-            system: (!request.system_prompt.is_empty()).then(|| request.system_prompt.join("\n\n")),
-            tools: self
-                .enable_tools
-                .then(|| filter_tool_specs(&self.tool_registry, self.allowed_tools.as_ref())),
-            tool_choice: self.enable_tools.then_some(ToolChoice::Auto),
-            stream: true,
-            reasoning_effort: self.reasoning_effort.clone(),
-            ..Default::default()
-        };
-
-        self.runtime.block_on(async {
-            // When resuming after tool execution, apply a stall timeout on the
-            // first stream event.  If the model does not respond within the
-            // deadline we drop the stalled connection and re-send the request as
-            // a continuation nudge (one retry only).
-            let max_attempts: usize = if is_post_tool { 2 } else { 1 };
-
-            for attempt in 1..=max_attempts {
-                let result = self
-                    .consume_stream(&message_request, is_post_tool && attempt == 1)
-                    .await;
-                match result {
-                    Ok(events) => return Ok(events),
-                    Err(error)
-                        if error.to_string().contains("post-tool stall")
-                            && attempt < max_attempts =>
-                    {
-                        // Stalled after tool completion — nudge the model by
-                        // re-sending the same request.
-                    }
-                    Err(error) => return Err(error),
-                }
-            }
-
-            Err(RuntimeError::new("post-tool continuation nudge exhausted"))
-        })
-    }
-}
-
-impl AnthropicRuntimeClient {
-    /// Consume a single streaming response, optionally applying a stall
-    /// timeout on the first event for post-tool continuations.
-    #[allow(clippy::too_many_lines)]
-    async fn consume_stream(
-        &self,
-        message_request: &MessageRequest,
-        apply_stall_timeout: bool,
-    ) -> Result<Vec<AssistantEvent>, RuntimeError> {
-        let mut stream = self
-            .client
-            .stream_message(message_request)
-            .await
-            .map_err(|error| {
-                RuntimeError::new(format_user_visible_api_error(&self.session_id, &error))
-            })?;
-        let mut stdout = io::stdout();
-        let mut sink = io::sink();
-        let out: &mut dyn Write = if self.emit_output {
-            &mut stdout
-        } else {
-            &mut sink
-        };
-        let renderer = TerminalRenderer::new();
-        let mut markdown_stream = MarkdownStreamState::default();
-        let mut events = Vec::new();
-        let mut pending_tool: Option<(String, String, String)> = None;
-        let mut block_has_thinking_summary = false;
-        let mut saw_stop = false;
-        let mut received_any_event = false;
-
-        loop {
-            let next = if apply_stall_timeout && !received_any_event {
-                match tokio::time::timeout(POST_TOOL_STALL_TIMEOUT, stream.next_event()).await {
-                    Ok(inner) => inner.map_err(|error| {
-                        RuntimeError::new(format_user_visible_api_error(&self.session_id, &error))
-                    })?,
-                    Err(_elapsed) => {
-                        return Err(RuntimeError::new(
-                            "post-tool stall: model did not respond within timeout",
-                        ));
-                    }
-                }
-            } else {
-                stream.next_event().await.map_err(|error| {
-                    RuntimeError::new(format_user_visible_api_error(&self.session_id, &error))
-                })?
-            };
-
-            let Some(event) = next else {
-                break;
-            };
-            received_any_event = true;
-
-            match event {
-                ApiStreamEvent::MessageStart(start) => {
-                    for block in start.message.content {
-                        push_output_block(
-                            block,
-                            out,
-                            &mut events,
-                            &mut pending_tool,
-                            true,
-                            &mut block_has_thinking_summary,
-                        )?;
-                    }
-                }
-                ApiStreamEvent::ContentBlockStart(start) => {
-                    push_output_block(
-                        start.content_block,
-                        out,
-                        &mut events,
-                        &mut pending_tool,
-                        true,
-                        &mut block_has_thinking_summary,
-                    )?;
-                }
-                ApiStreamEvent::ContentBlockDelta(delta) => match delta.delta {
-                    ContentBlockDelta::TextDelta { text } => {
-                        if !text.is_empty() {
-                            if let Some(progress_reporter) = &self.progress_reporter {
-                                progress_reporter.mark_text_phase(&text);
-                            }
-                            if let Some(rendered) = markdown_stream.push(&renderer, &text) {
-                                write!(out, "{rendered}")
-                                    .and_then(|()| out.flush())
-                                    .map_err(|error| RuntimeError::new(error.to_string()))?;
-                            }
-                            events.push(AssistantEvent::TextDelta(text));
-                        }
-                    }
-                    ContentBlockDelta::InputJsonDelta { partial_json } => {
-                        if let Some((_, _, input)) = &mut pending_tool {
-                            input.push_str(&partial_json);
-                        }
-                    }
-                    ContentBlockDelta::ThinkingDelta { thinking } => {
-                        if !block_has_thinking_summary {
-                            render_thinking_block_summary(out, None, false)?;
-                            block_has_thinking_summary = true;
-                        }
-                        events.push(AssistantEvent::ThinkingDelta(thinking));
-                    }
-                    ContentBlockDelta::SignatureDelta { signature } => {
-                        events.push(AssistantEvent::SignatureDelta(signature));
-                    }
-                },
-                ApiStreamEvent::ContentBlockStop(_) => {
-                    block_has_thinking_summary = false;
-                    if let Some(rendered) = markdown_stream.flush(&renderer) {
-                        write!(out, "{rendered}")
-                            .and_then(|()| out.flush())
-                            .map_err(|error| RuntimeError::new(error.to_string()))?;
-                    }
-                    if let Some((id, name, input)) = pending_tool.take() {
-                        if let Some(progress_reporter) = &self.progress_reporter {
-                            progress_reporter.mark_tool_phase(&name, &input);
-                        }
-                        // Display tool call now that input is fully accumulated
-                        writeln!(out, "\n{}", format_tool_call_start(&name, &input))
-                            .and_then(|()| out.flush())
-                            .map_err(|error| RuntimeError::new(error.to_string()))?;
-                        events.push(AssistantEvent::ToolUse { id, name, input });
-                    }
-                }
-                ApiStreamEvent::MessageDelta(delta) => {
-                    events.push(AssistantEvent::Usage(delta.usage.token_usage()));
-                }
-                ApiStreamEvent::MessageStop(_) => {
-                    saw_stop = true;
-                    if let Some(rendered) = markdown_stream.flush(&renderer) {
-                        write!(out, "{rendered}")
-                            .and_then(|()| out.flush())
-                            .map_err(|error| RuntimeError::new(error.to_string()))?;
-                    }
-                    events.push(AssistantEvent::MessageStop);
-                }
-            }
-        }
-
-        push_prompt_cache_record(&self.client, &mut events);
-
-        if !saw_stop
-            && events.iter().any(|event| {
-                matches!(event, AssistantEvent::TextDelta(text) if !text.is_empty())
-                    || matches!(event, AssistantEvent::ToolUse { .. })
-            })
-        {
-            events.push(AssistantEvent::MessageStop);
-        }
-
-        if events
-            .iter()
-            .any(|event| matches!(event, AssistantEvent::MessageStop))
-        {
-            return Ok(events);
-        }
-
-        let response = self
-            .client
-            .send_message(&MessageRequest {
-                stream: false,
-                ..message_request.clone()
-            })
-            .await
-            .map_err(|error| {
-                RuntimeError::new(format_user_visible_api_error(&self.session_id, &error))
-            })?;
-        let mut events = response_to_events(response, out)?;
-        push_prompt_cache_record(&self.client, &mut events);
-        Ok(events)
-    }
-}
-
-/// Returns `true` when the conversation ends with a tool-result message,
-/// meaning the model is expected to continue after tool execution.
-fn request_ends_with_tool_result(request: &ApiRequest) -> bool {
-    request
-        .messages
-        .last()
-        .is_some_and(|message| message.role == MessageRole::Tool)
-}
-
-fn format_user_visible_api_error(session_id: &str, error: &api::ApiError) -> String {
-    if error.is_context_window_failure() {
-        format_context_window_blocked_error(session_id, error)
-    } else if error.is_generic_fatal_wrapper() {
-        let mut qualifiers = vec![format!("session {session_id}")];
-        if let Some(request_id) = error.request_id() {
-            qualifiers.push(format!("trace {request_id}"));
-        }
-        format!(
-            "{} ({}): {}",
-            error.safe_failure_class(),
-            qualifiers.join(", "),
-            error
-        )
-    } else {
-        error.to_string()
-    }
-}
-
-fn format_context_window_blocked_error(session_id: &str, error: &api::ApiError) -> String {
-    let mut lines = vec![
-        "Context window blocked".to_string(),
-        "  Failure class    context_window_blocked".to_string(),
-        format!("  Session          {session_id}"),
-    ];
-
-    if let Some(request_id) = error.request_id() {
-        lines.push(format!("  Trace            {request_id}"));
-    }
-
-    match error {
-        api::ApiError::ContextWindowExceeded {
-            model,
-            estimated_input_tokens,
-            requested_output_tokens,
-            estimated_total_tokens,
-            context_window_tokens,
-        } => {
-            lines.push(format!("  Model            {model}"));
-            lines.push(format!(
-                "  Input estimate   ~{estimated_input_tokens} tokens (heuristic)"
-            ));
-            lines.push(format!(
-                "  Requested output {requested_output_tokens} tokens"
-            ));
-            lines.push(format!(
-                "  Total estimate   ~{estimated_total_tokens} tokens (heuristic)"
-            ));
-            lines.push(format!("  Context window   {context_window_tokens} tokens"));
-        }
-        api::ApiError::Api { message, body, .. } => {
-            let detail = message.as_deref().unwrap_or(body).trim();
-            if !detail.is_empty() {
-                lines.push(format!(
-                    "  Detail           {}",
-                    truncate_for_summary(detail, 120)
-                ));
-            }
-        }
-        api::ApiError::RetriesExhausted { last_error, .. } => {
-            let detail = match last_error.as_ref() {
-                api::ApiError::Api { message, body, .. } => message.as_deref().unwrap_or(body),
-                other => return format_context_window_blocked_error(session_id, other),
-            }
-            .trim();
-            if !detail.is_empty() {
-                lines.push(format!(
-                    "  Detail           {}",
-                    truncate_for_summary(detail, 120)
-                ));
-            }
-        }
-        _ => {}
-    }
-
-    lines.push(String::new());
-    lines.push("Recovery".to_string());
-    lines.push("  Compact          /compact".to_string());
-    lines.push(format!(
-        "  Resume compact   claw --resume {session_id} /compact"
-    ));
-    lines.push("  Fresh session    /clear --confirm".to_string());
-    lines.push(
-        "  Reduce scope     remove large pasted context/files or ask for a smaller slice"
-            .to_string(),
-    );
-    lines.push("  Retry            rerun after compacting or reducing the request".to_string());
-
-    lines.join("\n")
-}
 
 fn final_assistant_text(summary: &runtime::TurnSummary) -> String {
     summary
@@ -4576,12 +4156,12 @@ mod tests {
         format_connected_line, format_cost_report, format_history_timestamp,
         format_internal_prompt_progress_line, format_issue_report, format_model_report,
         format_model_switch_report, format_permissions_report, format_permissions_switch_report,
-        format_pr_report, format_resume_report, format_status_report, format_tool_call_start,
+        format_pr_report, format_resume_report, format_status_report,
         format_tool_result, format_ultraplan_report, format_unknown_slash_command,
-        format_unknown_slash_command_message, format_user_visible_api_error,
+        format_unknown_slash_command_message,
         merge_prompt_with_stdin, normalize_permission_mode, parse_args, parse_export_args,
         parse_git_status_branch, parse_git_status_metadata_for, parse_git_workspace_summary,
-        parse_history_count, permission_policy, print_help_to, push_output_block,
+        parse_history_count, permission_policy, print_help_to,
         render_config_report, render_diff_report, render_diff_report_for, render_help_topic,
         render_memory_report, render_prompt_history_report, render_repl_help, render_resume_usage,
         render_session_markdown, resolve_model_alias, resolve_model_alias_with_config,
@@ -4595,6 +4175,9 @@ mod tests {
         STUB_COMMANDS,
     };
     use api::{ApiError, MessageResponse, OutputContentBlock, Usage};
+    use crate::render::{
+        format_tool_call_start, format_user_visible_api_error, push_output_block,
+    };
     use plugins::{
         PluginManager, PluginManagerConfig, PluginTool, PluginToolDefinition, PluginToolPermission,
     };

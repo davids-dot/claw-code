@@ -73,9 +73,9 @@
 
 ## 13. Create api_client.rs — extract AnthropicRuntimeClient
 
-- [ ] 13.1 Create `src/api_client.rs` with AnthropicRuntimeClient struct, its impl, ApiClient trait impl, `resolve_cli_auth_source`, `resolve_cli_auth_source_for_cwd`, `request_ends_with_tool_result`, `format_user_visible_api_error`, `format_context_window_blocked_error` (main.rs lines 7497-7912)
-- [ ] 13.2 Add `mod api_client;` to `main.rs` and re-export
-- [ ] 13.3 Run `cargo build` and `cargo test` — must pass
+- [x] 13.1 Create `src/api_client.rs` with AnthropicRuntimeClient struct, its impl, ApiClient trait impl, `resolve_cli_auth_source`, `resolve_cli_auth_source_for_cwd`, `request_ends_with_tool_result`, `format_user_visible_api_error`, `format_context_window_blocked_error` (main.rs lines 7497-7912)
+- [x] 13.2 Add `mod api_client;` to `main.rs` and re-export
+- [x] 13.3 Run `cargo build` and `cargo test` — must pass
 
 ## 14. Create tool_executor.rs — extract CliToolExecutor
 
