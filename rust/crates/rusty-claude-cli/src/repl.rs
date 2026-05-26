@@ -7,15 +7,6 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 use std::time::UNIX_EPOCH;
 
-pub(crate) struct LiveCli {
-    model: String,
-    allowed_tools: Option<AllowedToolSet>,
-    permission_mode: PermissionMode,
-    system_prompt: Vec<String>,
-    runtime: BuiltRuntime,
-    session: SessionHandle,
-    prompt_history: Vec<PromptHistoryEntry>,
-}
 
 impl LiveCli {
     pub(crate) fn new(
