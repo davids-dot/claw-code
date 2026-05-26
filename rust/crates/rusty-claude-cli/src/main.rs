@@ -25,6 +25,7 @@ mod api_client;
 mod progress;
 mod repl;
 mod render;
+mod tool_executor;
 
 pub(crate) use api_client::*;
 pub(crate) use args::*;
@@ -38,6 +39,7 @@ pub(crate) use model::*;
 pub(crate) use models::*;
 pub(crate) use permission::*;
 pub(crate) use progress::*;
+pub(crate) use tool_executor::*;
 use std::collections::BTreeSet;
 use std::env;
 use std::fs;
@@ -1469,31 +1471,6 @@ impl Drop for BuiltRuntime {
         let _ = self.shutdown_mcp();
         let _ = self.shutdown_plugins();
     }
-}
-
-#[derive(Debug, Deserialize)]
-struct ToolSearchRequest {
-    query: String,
-    max_results: Option<usize>,
-}
-
-#[derive(Debug, Deserialize)]
-struct McpToolRequest {
-    #[serde(rename = "qualifiedName")]
-    qualified_name: Option<String>,
-    tool: Option<String>,
-    arguments: Option<serde_json::Value>,
-}
-
-#[derive(Debug, Deserialize)]
-struct ListMcpResourcesRequest {
-    server: Option<String>,
-}
-
-#[derive(Debug, Deserialize)]
-struct ReadMcpResourceRequest {
-    server: String,
-    uri: String,
 }
 
 impl RuntimeMcpState {

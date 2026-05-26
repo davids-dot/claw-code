@@ -79,9 +79,9 @@
 
 ## 14. Create tool_executor.rs — extract CliToolExecutor
 
-- [ ] 14.1 Create `src/tool_executor.rs` with CliToolExecutor struct+impl, ToolExecutor trait impl, ToolSearchRequest/McpToolRequest/ListMcpResourcesRequest/ReadMcpResourceRequest structs, and `convert_messages` (main.rs lines 8731-8922)
-- [ ] 14.2 Add `mod tool_executor;` to `main.rs` and re-export
-- [ ] 14.3 Run `cargo build` and `cargo test` — must pass
+- [x] 14.1 Create `src/tool_executor.rs` with CliToolExecutor struct+impl, ToolExecutor trait impl, ToolSearchRequest/McpToolRequest/ListMcpResourcesRequest/ReadMcpResourceRequest structs, and `convert_messages` (main.rs lines 8731-8922)
+- [x] 14.2 Add `mod tool_executor;` to `main.rs` and re-export
+- [x] 14.3 Run `cargo build` and `cargo test` — must pass
 
 ## 15. Create runtime_builder.rs — extract runtime construction
 
