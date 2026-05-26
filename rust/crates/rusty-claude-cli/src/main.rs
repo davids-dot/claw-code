@@ -9,10 +9,20 @@
     clippy::doc_markdown,
     clippy::result_large_err
 )]
+mod constants;
+mod doctor;
 mod init;
 mod input;
+mod model;
+mod permission;
+mod progress;
 mod render;
 
+use constants::*;
+use doctor::*;
+use model::*;
+use permission::*;
+use progress::*;
 use std::collections::BTreeSet;
 use std::env;
 use std::fs;
@@ -59,144 +69,7 @@ use tools::{
     execute_tool, mvp_tool_specs, GlobalToolRegistry, RuntimeToolDefinition, ToolSearchOutput,
 };
 
-const DEFAULT_MODEL: &str = "claude-opus-4-6";
 
-/// #148: Model provenance for `claw status` JSON/text output. Records where
-/// the resolved model string came from so claws don't have to re-read argv
-/// to audit whether their `--model` flag was honored vs falling back to env
-/// or config or default.
-#[derive(Debug, Clone, PartialEq, Eq)]
-enum ModelSource {
-    /// Explicit `--model` / `--model=` CLI flag.
-    Flag,
-    /// ANTHROPIC_MODEL environment variable (when no flag was passed).
-    Env,
-    /// `model` key in `.claw.json` / `.claw/settings.json` (when neither
-    /// flag nor env set it).
-    Config,
-    /// Compiled-in DEFAULT_MODEL fallback.
-    Default,
-}
-
-impl ModelSource {
-    fn as_str(&self) -> &'static str {
-        match self {
-            ModelSource::Flag => "flag",
-            ModelSource::Env => "env",
-            ModelSource::Config => "config",
-            ModelSource::Default => "default",
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct ModelProvenance {
-    /// Resolved model string (after alias expansion).
-    resolved: String,
-    /// Raw user input before alias resolution. None when source is Default.
-    raw: Option<String>,
-    /// Where the resolved model string originated.
-    source: ModelSource,
-}
-
-impl ModelProvenance {
-    fn default_fallback() -> Self {
-        Self {
-            resolved: DEFAULT_MODEL.to_string(),
-            raw: None,
-            source: ModelSource::Default,
-        }
-    }
-
-    fn from_flag(raw: &str) -> Self {
-        Self {
-            resolved: resolve_model_alias_with_config(raw),
-            raw: Some(raw.to_string()),
-            source: ModelSource::Flag,
-        }
-    }
-
-    fn from_env_or_config_or_default(cli_model: &str) -> Self {
-        // Only called when no --model flag was passed. Probe env first,
-        // then config, else fall back to default. Mirrors the logic in
-        // resolve_repl_model() but captures the source.
-        if cli_model != DEFAULT_MODEL {
-            // Already resolved from some prior path; treat as flag.
-            return Self {
-                resolved: cli_model.to_string(),
-                raw: Some(cli_model.to_string()),
-                source: ModelSource::Flag,
-            };
-        }
-        if let Some(env_model) = env::var("ANTHROPIC_MODEL")
-            .ok()
-            .map(|value| value.trim().to_string())
-            .filter(|value| !value.is_empty())
-        {
-            return Self {
-                resolved: resolve_model_alias_with_config(&env_model),
-                raw: Some(env_model),
-                source: ModelSource::Env,
-            };
-        }
-        if let Some(config_model) = config_model_for_current_dir() {
-            return Self {
-                resolved: resolve_model_alias_with_config(&config_model),
-                raw: Some(config_model),
-                source: ModelSource::Config,
-            };
-        }
-        Self::default_fallback()
-    }
-}
-
-fn max_tokens_for_model(model: &str) -> u32 {
-    if model.contains("opus") {
-        32_000
-    } else {
-        64_000
-    }
-}
-// Build-time constants injected by build.rs (fall back to static values when
-// build.rs hasn't run, e.g. in doc-test or unusual toolchain environments).
-const DEFAULT_DATE: &str = match option_env!("BUILD_DATE") {
-    Some(d) => d,
-    None => "unknown",
-};
-const DEFAULT_OAUTH_CALLBACK_PORT: u16 = 4545;
-const VERSION: &str = env!("CARGO_PKG_VERSION");
-const BUILD_TARGET: Option<&str> = option_env!("TARGET");
-const GIT_SHA: Option<&str> = option_env!("GIT_SHA");
-const INTERNAL_PROGRESS_HEARTBEAT_INTERVAL: Duration = Duration::from_secs(3);
-const POST_TOOL_STALL_TIMEOUT: Duration = Duration::from_secs(10);
-const PRIMARY_SESSION_EXTENSION: &str = "jsonl";
-const LEGACY_SESSION_EXTENSION: &str = "json";
-const OFFICIAL_REPO_URL: &str = "https://github.com/ultraworkers/claw-code";
-const OFFICIAL_REPO_SLUG: &str = "ultraworkers/claw-code";
-const DEPRECATED_INSTALL_COMMAND: &str = "cargo install claw-code";
-const LATEST_SESSION_REFERENCE: &str = "latest";
-const SESSION_REFERENCE_ALIASES: &[&str] = &[LATEST_SESSION_REFERENCE, "last", "recent"];
-const CLI_OPTION_SUGGESTIONS: &[&str] = &[
-    "--help",
-    "-h",
-    "--version",
-    "-V",
-    "--model",
-    "--output-format",
-    "--permission-mode",
-    "--dangerously-skip-permissions",
-    "--allowedTools",
-    "--allowed-tools",
-    "--resume",
-    "--acp",
-    "-acp",
-    "--print",
-    "--compact",
-    "--base-commit",
-    "-p",
-];
-
-type AllowedToolSet = BTreeSet<String>;
 type RuntimePluginStateBuildOutput = (
     Option<Arc<Mutex<RuntimeMcpState>>>,
     Vec<RuntimeToolDefinition>,
@@ -204,6 +77,7 @@ type RuntimePluginStateBuildOutput = (
 
 fn main() {
     if let Err(error) = run() {
+        // 出错逻辑
         let message = format!(
             "{:?}\n\nStack trace:\n{}",
             error,
@@ -244,7 +118,6 @@ error: {message}"
                 eprintln!(
                     "[error-kind: {kind}]
 error: {message}
-
 Run `claw --help` for usage."
                 );
             }
@@ -343,13 +216,19 @@ fn merge_prompt_with_stdin(prompt: &str, stdin_content: Option<&str>) -> String 
 
 fn run() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<String> = env::args().skip(1).collect();
+    // 添加打印args 的日志
+    println!("args: {:?}", args);
 
     match parse_args(&args)? {
+        // 导出所有工具/插件的 manifest 清单文件到指定目录
         CliAction::DumpManifests {
             output_format,
             manifests_dir,
         } => dump_manifests(manifests_dir.as_deref(), output_format)?,
+
+        // 打印启动引导计划（初始化阶段的工作流规划）
         CliAction::BootstrapPlan { output_format } => print_bootstrap_plan(output_format)?,
+        // 查看可用的 Agent 信息列表
         CliAction::Agents {
             args,
             output_format,
@@ -362,22 +241,27 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             args,
             output_format,
         } => LiveCli::print_skills(args.as_deref(), output_format)?,
+        // 查看和管理插件列表（安装/卸载/详情）
         CliAction::Plugins {
             action,
             target,
             output_format,
         } => LiveCli::print_plugins(action.as_deref(), target.as_deref(), output_format)?,
+        // 打印当前会话的系统提示词完整内容，用于调试和审查
         CliAction::PrintSystemPrompt {
             cwd,
             date,
             output_format,
         } => print_system_prompt(cwd, date, output_format)?,
+        // 输出版本号
         CliAction::Version { output_format } => print_version(output_format)?,
+        // 恢复一个已保存的历史会话，可追加命令继续执行
         CliAction::ResumeSession {
             session_path,
             commands,
             output_format,
         } => resume_session(&session_path, &commands, output_format),
+        // 输出当前工作区状态快照（模型、权限、分支、工具白名单等）
         CliAction::Status {
             model,
             model_flag_raw,
@@ -391,7 +275,9 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             output_format,
             allowed_tools.as_ref(),
         )?,
+        // 输出沙箱隔离环境的状态信息
         CliAction::Sandbox { output_format } => print_sandbox_status_snapshot(output_format)?,
+        // 单次提示模式：执行一轮对话后退出，适用于脚本/管道调用
         CliAction::Prompt {
             prompt,
             model,
@@ -405,6 +291,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         } => {
             enforce_broad_cwd_policy(allow_broad_cwd, output_format)?;
             run_stale_base_preflight(base_commit.as_deref());
+            
             // Only consume piped stdin as prompt context when the permission
             // mode is fully unattended. In modes where the permission
             // prompter may invoke CliPermissionPrompter::decide(), stdin
@@ -421,13 +308,15 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             cli.set_reasoning_effort(reasoning_effort);
             cli.run_turn_with_output(&effective_prompt, output_format, compact)?;
         }
+        // 环境诊断检查，验证配置和依赖是否正常
         CliAction::Doctor { output_format } => run_doctor(output_format)?,
+        // 输出 Agent Control Protocol 状态信息
         CliAction::Acp { output_format } => print_acp_status(output_format)?,
+        // 输出后台 worker 的运行状态
         CliAction::State { output_format } => run_worker_state(output_format)?,
+        // 初始化工作区配置（生成 .claw.json 等）
         CliAction::Init { output_format } => run_init(output_format)?,
-        // #146: dispatch pure-local introspection. Text mode uses existing
-        // render_config_report/render_diff_report; JSON mode uses the
-        // corresponding _json helpers already exposed for resume sessions.
+        // 查看当前生效的配置信息（可指定 section 过滤），纯本地只读操作
         CliAction::Config {
             section,
             output_format,
@@ -442,6 +331,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 );
             }
         },
+        // 查看 git 工作区变更差异摘要（未提交的改动），纯本地只读操作
         CliAction::Diff { output_format } => match output_format {
             CliOutputFormat::Text => {
                 println!("{}", render_diff_report()?);
@@ -454,12 +344,14 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 );
             }
         },
+        // 导出指定会话记录到文件（支持 JSON/Markdown 等格式）
         CliAction::Export {
             session_reference,
             output_path,
             output_format,
         } => run_export(&session_reference, output_path.as_deref(), output_format)?,
 
+        // 交互式 REPL 模式：进入持续对话循环，直到用户主动退出
         CliAction::Repl {
             model,
             allowed_tools,
@@ -475,7 +367,9 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             reasoning_effort,
             allow_broad_cwd,
         )?,
+        // 打印特定子命令的帮助详情（如 claw status --help）
         CliAction::HelpTopic(topic) => print_help_topic(topic),
+        // 打印通用帮助信息
         CliAction::Help { output_format } => print_help(output_format)?,
     }
     Ok(())
@@ -622,10 +516,13 @@ impl CliOutputFormat {
 
 #[allow(clippy::too_many_lines)]
 fn parse_args(args: &[String]) -> Result<CliAction, String> {
+
     let mut model = DEFAULT_MODEL.to_string();
+    
     // #148: when user passes --model/--model=, capture the raw input so we
     // can attribute source: "flag" later. None means no flag was supplied.
     let mut model_flag_raw: Option<String> = None;
+
     let mut output_format = CliOutputFormat::Text;
     let mut permission_mode_override = None;
     let mut wants_help = false;
@@ -1437,89 +1334,7 @@ fn levenshtein_distance(left: &str, right: &str) -> usize {
     previous[right_chars.len()]
 }
 
-fn resolve_model_alias(model: &str) -> &str {
-    match model {
-        "opus" => "claude-opus-4-6",
-        "sonnet" => "claude-sonnet-4-6",
-        "haiku" => "claude-haiku-4-5-20251213",
-        _ => model,
-    }
-}
 
-/// Resolve a model name through user-defined config aliases first, then fall
-/// back to the built-in alias table. This is the entry point used wherever a
-/// user-supplied model string is about to be dispatched to a provider.
-fn resolve_model_alias_with_config(model: &str) -> String {
-    let trimmed = model.trim();
-    if let Some(resolved) = config_alias_for_current_dir(trimmed) {
-        return resolve_model_alias(&resolved).to_string();
-    }
-    resolve_model_alias(trimmed).to_string()
-}
-
-/// Validate model syntax at parse time.
-/// Accepts: known aliases (opus, sonnet, haiku) or provider/model pattern.
-/// Rejects: empty, whitespace-only, strings with spaces, or invalid chars.
-fn validate_model_syntax(model: &str) -> Result<(), String> {
-    let trimmed = model.trim();
-    if trimmed.is_empty() {
-        return Err("model string cannot be empty".to_string());
-    }
-    // Known aliases are always valid
-    match trimmed {
-        "opus" | "sonnet" | "haiku" | "grok" | "grok-2" | "grok-3" | "grok-mini"
-        | "grok-3-mini" | "kimi" | "glm-5" => return Ok(()),
-        _ => {}
-    }
-
-    // Dashscope and xAI models that don't use provider/model syntax
-    if trimmed.starts_with("qwen-")
-        || trimmed.starts_with("ali-")
-        || trimmed.starts_with("glm-")
-        || trimmed.starts_with("kimi-")
-    {
-        return Ok(());
-    }
-    // Check for spaces (malformed)
-    if trimmed.contains(' ') {
-        return Err(format!(
-            "invalid model syntax: '{trimmed}' contains spaces. Use provider/model format or known alias"
-        ));
-    }
-    // Check provider/model format: provider_id/model_id
-    let parts: Vec<&str> = trimmed.split('/').collect();
-    if parts.len() != 2 || parts[0].is_empty() || parts[1].is_empty() {
-        // #154: hint if the model looks like it belongs to a different provider
-        let mut err_msg = format!(
-            "invalid model syntax: '{trimmed}'. Expected provider/model (e.g., anthropic/claude-opus-4-6) or known alias (opus, sonnet, haiku)"
-        );
-        if trimmed.starts_with("gpt-") || trimmed.starts_with("gpt_") {
-            err_msg.push_str("\nDid you mean `openai/");
-            err_msg.push_str(trimmed);
-            err_msg.push_str("`? (Requires OPENAI_API_KEY env var)");
-        } else if trimmed.starts_with("qwen") {
-            err_msg.push_str("\nDid you mean `qwen/");
-            err_msg.push_str(trimmed);
-            err_msg.push_str("`? (Requires DASHSCOPE_API_KEY env var)");
-        } else if trimmed.starts_with("grok") {
-            err_msg.push_str("\nDid you mean `xai/");
-            err_msg.push_str(trimmed);
-            err_msg.push_str("`? (Requires XAI_API_KEY env var)");
-        }
-        return Err(err_msg);
-    }
-    Ok(())
-}
-
-fn config_alias_for_current_dir(alias: &str) -> Option<String> {
-    if alias.is_empty() {
-        return None;
-    }
-    let cwd = env::current_dir().ok()?;
-    let loader = ConfigLoader::default_for(&cwd);
-    let config = loader.load().ok()?;
-    config.aliases().get(alias).cloned()
-}
 
 fn normalize_allowed_tools(values: &[String]) -> Result<Option<AllowedToolSet>, String> {
     if values.is_empty() {
@@ -1592,41 +1407,7 @@ fn config_permission_mode_for_current_dir() -> Option<PermissionMode> {
         .map(permission_mode_from_resolved)
 }
 
-fn config_model_for_current_dir() -> Option<String> {
-    let cwd = env::current_dir().ok()?;
-    let loader = ConfigLoader::default_for(&cwd);
-    loader.load().ok()?.model().map(ToOwned::to_owned)
-}
 
-fn resolve_repl_model(cli_model: String) -> String {
-    if cli_model != DEFAULT_MODEL {
-        return cli_model;
-    }
-    if let Some(env_model) = env::var("ANTHROPIC_MODEL")
-        .ok()
-        .map(|value| value.trim().to_string())
-        .filter(|value| !value.is_empty())
-    {
-        return resolve_model_alias_with_config(&env_model);
-    }
-    if let Some(config_model) = config_model_for_current_dir() {
-        return resolve_model_alias_with_config(&config_model);
-    }
-    cli_model
-}
-
-fn provider_label(kind: ProviderKind) -> &'static str {
-    match kind {
-        ProviderKind::Anthropic => "anthropic",
-        ProviderKind::Xai => "xai",
-        ProviderKind::OpenAi => "openai",
-    }
-}
-
-fn format_connected_line(model: &str) -> String {
-    let provider = provider_label(detect_provider_kind(model));
-    format!("Connected: {model} via {provider}")
-}
 
 fn filter_tool_specs(
     tool_registry: &GlobalToolRegistry,
@@ -1801,215 +1582,6 @@ fn parse_resume_args(args: &[String], output_format: CliOutputFormat) -> Result<
         commands,
         output_format,
     })
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum DiagnosticLevel {
-    Ok,
-    Warn,
-    Fail,
-}
-
-impl DiagnosticLevel {
-    fn label(self) -> &'static str {
-        match self {
-            Self::Ok => "ok",
-            Self::Warn => "warn",
-            Self::Fail => "fail",
-        }
-    }
-
-    fn is_failure(self) -> bool {
-        matches!(self, Self::Fail)
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct DiagnosticCheck {
-    name: &'static str,
-    level: DiagnosticLevel,
-    summary: String,
-    details: Vec<String>,
-    data: Map<String, Value>,
-}
-
-impl DiagnosticCheck {
-    fn new(name: &'static str, level: DiagnosticLevel, summary: impl Into<String>) -> Self {
-        Self {
-            name,
-            level,
-            summary: summary.into(),
-            details: Vec::new(),
-            data: Map::new(),
-        }
-    }
-
-    fn with_details(mut self, details: Vec<String>) -> Self {
-        self.details = details;
-        self
-    }
-
-    fn with_data(mut self, data: Map<String, Value>) -> Self {
-        self.data = data;
-        self
-    }
-
-    fn json_value(&self) -> Value {
-        let mut value = Map::from_iter([
-            (
-                "name".to_string(),
-                Value::String(self.name.to_ascii_lowercase()),
-            ),
-            (
-                "status".to_string(),
-                Value::String(self.level.label().to_string()),
-            ),
-            ("summary".to_string(), Value::String(self.summary.clone())),
-            (
-                "details".to_string(),
-                Value::Array(
-                    self.details
-                        .iter()
-                        .cloned()
-                        .map(Value::String)
-                        .collect::<Vec<_>>(),
-                ),
-            ),
-        ]);
-        value.extend(self.data.clone());
-        Value::Object(value)
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct DoctorReport {
-    checks: Vec<DiagnosticCheck>,
-}
-
-impl DoctorReport {
-    fn counts(&self) -> (usize, usize, usize) {
-        (
-            self.checks
-                .iter()
-                .filter(|check| check.level == DiagnosticLevel::Ok)
-                .count(),
-            self.checks
-                .iter()
-                .filter(|check| check.level == DiagnosticLevel::Warn)
-                .count(),
-            self.checks
-                .iter()
-                .filter(|check| check.level == DiagnosticLevel::Fail)
-                .count(),
-        )
-    }
-
-    fn has_failures(&self) -> bool {
-        self.checks.iter().any(|check| check.level.is_failure())
-    }
-
-    fn render(&self) -> String {
-        let (ok_count, warn_count, fail_count) = self.counts();
-        let mut lines = vec![
-            "Doctor".to_string(),
-            format!(
-                "Summary\n  OK               {ok_count}\n  Warnings         {warn_count}\n  Failures         {fail_count}"
-            ),
-        ];
-        lines.extend(self.checks.iter().map(render_diagnostic_check));
-        lines.join("\n\n")
-    }
-
-    fn json_value(&self) -> Value {
-        let report = self.render();
-        let (ok_count, warn_count, fail_count) = self.counts();
-        json!({
-            "kind": "doctor",
-            "message": report,
-            "report": report,
-            "has_failures": self.has_failures(),
-            "summary": {
-                "total": self.checks.len(),
-                "ok": ok_count,
-                "warnings": warn_count,
-                "failures": fail_count,
-            },
-            "checks": self
-                .checks
-                .iter()
-                .map(DiagnosticCheck::json_value)
-                .collect::<Vec<_>>(),
-        })
-    }
-}
-
-fn render_diagnostic_check(check: &DiagnosticCheck) -> String {
-    let mut lines = vec![format!(
-        "{}\n  Status           {}\n  Summary          {}",
-        check.name,
-        check.level.label(),
-        check.summary
-    )];
-    if !check.details.is_empty() {
-        lines.push("  Details".to_string());
-        lines.extend(check.details.iter().map(|detail| format!("    - {detail}")));
-    }
-    lines.join("\n")
-}
-
-fn render_doctor_report() -> Result<DoctorReport, Box<dyn std::error::Error>> {
-    let cwd = env::current_dir()?;
-    let config_loader = ConfigLoader::default_for(&cwd);
-    let config = config_loader.load();
-    let discovered_config = config_loader.discover();
-    let project_context = ProjectContext::discover_with_git(&cwd, DEFAULT_DATE)?;
-    let (project_root, git_branch) =
-        parse_git_status_metadata(project_context.git_status.as_deref());
-    let git_summary = parse_git_workspace_summary(project_context.git_status.as_deref());
-    let empty_config = runtime::RuntimeConfig::empty();
-    let sandbox_config = config.as_ref().ok().unwrap_or(&empty_config);
-    let context = StatusContext {
-        cwd: cwd.clone(),
-        session_path: None,
-        loaded_config_files: config
-            .as_ref()
-            .ok()
-            .map_or(0, |runtime_config| runtime_config.loaded_entries().len()),
-        discovered_config_files: discovered_config.len(),
-        memory_file_count: project_context.instruction_files.len(),
-        project_root,
-        git_branch,
-        git_summary,
-        sandbox_status: resolve_sandbox_status(sandbox_config.sandbox(), &cwd),
-        // Doctor path has its own config check; StatusContext here is only
-        // fed into health renderers that don't read config_load_error.
-        config_load_error: config.as_ref().err().map(ToString::to_string),
-    };
-    Ok(DoctorReport {
-        checks: vec![
-            check_auth_health(),
-            check_config_health(&config_loader, config.as_ref()),
-            check_install_source_health(),
-            check_workspace_health(&context),
-            check_sandbox_health(&context.sandbox_status),
-            check_system_health(&cwd, config.as_ref().ok()),
-        ],
-    })
-}
-
-fn run_doctor(output_format: CliOutputFormat) -> Result<(), Box<dyn std::error::Error>> {
-    let report = render_doctor_report()?;
-    let message = report.render();
-    match output_format {
-        CliOutputFormat::Text => println!("{message}"),
-        CliOutputFormat::Json => {
-            println!("{}", serde_json::to_string_pretty(&report.json_value())?);
-        }
-    }
-    if report.has_failures() {
-        return Err("doctor found failing checks".into());
-    }
-    Ok(())
 }
 
 /// Starts a minimal Model Context Protocol server that exposes claw's
@@ -6972,334 +6544,6 @@ fn runtime_hook_config_from_plugin_hooks(hooks: PluginHooks) -> runtime::Runtime
     )
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct InternalPromptProgressState {
-    command_label: &'static str,
-    task_label: String,
-    step: usize,
-    phase: String,
-    detail: Option<String>,
-    saw_final_text: bool,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum InternalPromptProgressEvent {
-    Started,
-    Update,
-    Heartbeat,
-    Complete,
-    Failed,
-}
-
-#[derive(Debug)]
-struct InternalPromptProgressShared {
-    state: Mutex<InternalPromptProgressState>,
-    output_lock: Mutex<()>,
-    started_at: Instant,
-}
-
-#[derive(Debug, Clone)]
-struct InternalPromptProgressReporter {
-    shared: Arc<InternalPromptProgressShared>,
-}
-
-#[derive(Debug)]
-struct InternalPromptProgressRun {
-    reporter: InternalPromptProgressReporter,
-    heartbeat_stop: Option<mpsc::Sender<()>>,
-    heartbeat_handle: Option<thread::JoinHandle<()>>,
-}
-
-impl InternalPromptProgressReporter {
-    fn ultraplan(task: &str) -> Self {
-        Self {
-            shared: Arc::new(InternalPromptProgressShared {
-                state: Mutex::new(InternalPromptProgressState {
-                    command_label: "Ultraplan",
-                    task_label: task.to_string(),
-                    step: 0,
-                    phase: "planning started".to_string(),
-                    detail: Some(format!("task: {task}")),
-                    saw_final_text: false,
-                }),
-                output_lock: Mutex::new(()),
-                started_at: Instant::now(),
-            }),
-        }
-    }
-
-    fn emit(&self, event: InternalPromptProgressEvent, error: Option<&str>) {
-        let snapshot = self.snapshot();
-        let line = format_internal_prompt_progress_line(event, &snapshot, self.elapsed(), error);
-        self.write_line(&line);
-    }
-
-    fn mark_model_phase(&self) {
-        let snapshot = {
-            let mut state = self
-                .shared
-                .state
-                .lock()
-                .expect("internal prompt progress state poisoned");
-            state.step += 1;
-            state.phase = if state.step == 1 {
-                "analyzing request".to_string()
-            } else {
-                "reviewing findings".to_string()
-            };
-            state.detail = Some(format!("task: {}", state.task_label));
-            state.clone()
-        };
-        self.write_line(&format_internal_prompt_progress_line(
-            InternalPromptProgressEvent::Update,
-            &snapshot,
-            self.elapsed(),
-            None,
-        ));
-    }
-
-    fn mark_tool_phase(&self, name: &str, input: &str) {
-        let detail = describe_tool_progress(name, input);
-        let snapshot = {
-            let mut state = self
-                .shared
-                .state
-                .lock()
-                .expect("internal prompt progress state poisoned");
-            state.step += 1;
-            state.phase = format!("running {name}");
-            state.detail = Some(detail);
-            state.clone()
-        };
-        self.write_line(&format_internal_prompt_progress_line(
-            InternalPromptProgressEvent::Update,
-            &snapshot,
-            self.elapsed(),
-            None,
-        ));
-    }
-
-    fn mark_text_phase(&self, text: &str) {
-        let trimmed = text.trim();
-        if trimmed.is_empty() {
-            return;
-        }
-        let detail = truncate_for_summary(first_visible_line(trimmed), 120);
-        let snapshot = {
-            let mut state = self
-                .shared
-                .state
-                .lock()
-                .expect("internal prompt progress state poisoned");
-            if state.saw_final_text {
-                return;
-            }
-            state.saw_final_text = true;
-            state.step += 1;
-            state.phase = "drafting final plan".to_string();
-            state.detail = (!detail.is_empty()).then_some(detail);
-            state.clone()
-        };
-        self.write_line(&format_internal_prompt_progress_line(
-            InternalPromptProgressEvent::Update,
-            &snapshot,
-            self.elapsed(),
-            None,
-        ));
-    }
-
-    fn emit_heartbeat(&self) {
-        let snapshot = self.snapshot();
-        self.write_line(&format_internal_prompt_progress_line(
-            InternalPromptProgressEvent::Heartbeat,
-            &snapshot,
-            self.elapsed(),
-            None,
-        ));
-    }
-
-    fn snapshot(&self) -> InternalPromptProgressState {
-        self.shared
-            .state
-            .lock()
-            .expect("internal prompt progress state poisoned")
-            .clone()
-    }
-
-    fn elapsed(&self) -> Duration {
-        self.shared.started_at.elapsed()
-    }
-
-    fn write_line(&self, line: &str) {
-        let _guard = self
-            .shared
-            .output_lock
-            .lock()
-            .expect("internal prompt progress output lock poisoned");
-        let mut stdout = io::stdout();
-        let _ = writeln!(stdout, "{line}");
-        let _ = stdout.flush();
-    }
-}
-
-impl InternalPromptProgressRun {
-    fn start_ultraplan(task: &str) -> Self {
-        let reporter = InternalPromptProgressReporter::ultraplan(task);
-        reporter.emit(InternalPromptProgressEvent::Started, None);
-
-        let (heartbeat_stop, heartbeat_rx) = mpsc::channel();
-        let heartbeat_reporter = reporter.clone();
-        let heartbeat_handle = thread::spawn(move || loop {
-            match heartbeat_rx.recv_timeout(INTERNAL_PROGRESS_HEARTBEAT_INTERVAL) {
-                Ok(()) | Err(RecvTimeoutError::Disconnected) => break,
-                Err(RecvTimeoutError::Timeout) => heartbeat_reporter.emit_heartbeat(),
-            }
-        });
-
-        Self {
-            reporter,
-            heartbeat_stop: Some(heartbeat_stop),
-            heartbeat_handle: Some(heartbeat_handle),
-        }
-    }
-
-    fn reporter(&self) -> InternalPromptProgressReporter {
-        self.reporter.clone()
-    }
-
-    fn finish_success(&mut self) {
-        self.stop_heartbeat();
-        self.reporter
-            .emit(InternalPromptProgressEvent::Complete, None);
-    }
-
-    fn finish_failure(&mut self, error: &str) {
-        self.stop_heartbeat();
-        self.reporter
-            .emit(InternalPromptProgressEvent::Failed, Some(error));
-    }
-
-    fn stop_heartbeat(&mut self) {
-        if let Some(sender) = self.heartbeat_stop.take() {
-            let _ = sender.send(());
-        }
-        if let Some(handle) = self.heartbeat_handle.take() {
-            let _ = handle.join();
-        }
-    }
-}
-
-impl Drop for InternalPromptProgressRun {
-    fn drop(&mut self) {
-        self.stop_heartbeat();
-    }
-}
-
-fn format_internal_prompt_progress_line(
-    event: InternalPromptProgressEvent,
-    snapshot: &InternalPromptProgressState,
-    elapsed: Duration,
-    error: Option<&str>,
-) -> String {
-    let elapsed_seconds = elapsed.as_secs();
-    let step_label = if snapshot.step == 0 {
-        "current step pending".to_string()
-    } else {
-        format!("current step {}", snapshot.step)
-    };
-    let mut status_bits = vec![step_label, format!("phase {}", snapshot.phase)];
-    if let Some(detail) = snapshot
-        .detail
-        .as_deref()
-        .filter(|detail| !detail.is_empty())
-    {
-        status_bits.push(detail.to_string());
-    }
-    let status = status_bits.join(" · ");
-    match event {
-        InternalPromptProgressEvent::Started => {
-            format!(
-                "🧭 {} status · planning started · {status}",
-                snapshot.command_label
-            )
-        }
-        InternalPromptProgressEvent::Update => {
-            format!("… {} status · {status}", snapshot.command_label)
-        }
-        InternalPromptProgressEvent::Heartbeat => format!(
-            "… {} heartbeat · {elapsed_seconds}s elapsed · {status}",
-            snapshot.command_label
-        ),
-        InternalPromptProgressEvent::Complete => format!(
-            "✔ {} status · completed · {elapsed_seconds}s elapsed · {} steps total",
-            snapshot.command_label, snapshot.step
-        ),
-        InternalPromptProgressEvent::Failed => format!(
-            "✘ {} status · failed · {elapsed_seconds}s elapsed · {}",
-            snapshot.command_label,
-            error.unwrap_or("unknown error")
-        ),
-    }
-}
-
-fn describe_tool_progress(name: &str, input: &str) -> String {
-    let parsed: serde_json::Value =
-        serde_json::from_str(input).unwrap_or(serde_json::Value::String(input.to_string()));
-    match name {
-        "bash" | "Bash" => {
-            let command = parsed
-                .get("command")
-                .and_then(|value| value.as_str())
-                .unwrap_or_default();
-            if command.is_empty() {
-                "running shell command".to_string()
-            } else {
-                format!("command {}", truncate_for_summary(command.trim(), 100))
-            }
-        }
-        "read_file" | "Read" => format!("reading {}", extract_tool_path(&parsed)),
-        "write_file" | "Write" => format!("writing {}", extract_tool_path(&parsed)),
-        "edit_file" | "Edit" => format!("editing {}", extract_tool_path(&parsed)),
-        "glob_search" | "Glob" => {
-            let pattern = parsed
-                .get("pattern")
-                .and_then(|value| value.as_str())
-                .unwrap_or("?");
-            let scope = parsed
-                .get("path")
-                .and_then(|value| value.as_str())
-                .unwrap_or(".");
-            format!("glob `{pattern}` in {scope}")
-        }
-        "grep_search" | "Grep" => {
-            let pattern = parsed
-                .get("pattern")
-                .and_then(|value| value.as_str())
-                .unwrap_or("?");
-            let scope = parsed
-                .get("path")
-                .and_then(|value| value.as_str())
-                .unwrap_or(".");
-            format!("grep `{pattern}` in {scope}")
-        }
-        "web_search" | "WebSearch" => parsed
-            .get("query")
-            .and_then(|value| value.as_str())
-            .map_or_else(
-                || "running web search".to_string(),
-                |query| format!("query {}", truncate_for_summary(query, 100)),
-            ),
-        _ => {
-            let summary = summarize_tool_payload(input);
-            if summary.is_empty() {
-                format!("running {name}")
-            } else {
-                format!("{name}: {summary}")
-            }
-        }
-    }
-}
-
 #[allow(clippy::needless_pass_by_value)]
 #[allow(clippy::too_many_arguments)]
 fn build_runtime(
@@ -7380,88 +6624,6 @@ fn build_runtime_with_plugin_state(
         runtime = runtime.with_hook_progress_reporter(Box::new(CliHookProgressReporter));
     }
     Ok(BuiltRuntime::new(runtime, plugin_registry, mcp_state))
-}
-
-struct CliHookProgressReporter;
-
-impl runtime::HookProgressReporter for CliHookProgressReporter {
-    fn on_event(&mut self, event: &runtime::HookProgressEvent) {
-        match event {
-            runtime::HookProgressEvent::Started {
-                event,
-                tool_name,
-                command,
-            } => eprintln!(
-                "[hook {event_name}] {tool_name}: {command}",
-                event_name = event.as_str()
-            ),
-            runtime::HookProgressEvent::Completed {
-                event,
-                tool_name,
-                command,
-            } => eprintln!(
-                "[hook done {event_name}] {tool_name}: {command}",
-                event_name = event.as_str()
-            ),
-            runtime::HookProgressEvent::Cancelled {
-                event,
-                tool_name,
-                command,
-            } => eprintln!(
-                "[hook cancelled {event_name}] {tool_name}: {command}",
-                event_name = event.as_str()
-            ),
-        }
-    }
-}
-
-struct CliPermissionPrompter {
-    current_mode: PermissionMode,
-}
-
-impl CliPermissionPrompter {
-    fn new(current_mode: PermissionMode) -> Self {
-        Self { current_mode }
-    }
-}
-
-impl runtime::PermissionPrompter for CliPermissionPrompter {
-    fn decide(
-        &mut self,
-        request: &runtime::PermissionRequest,
-    ) -> runtime::PermissionPromptDecision {
-        println!();
-        println!("Permission approval required");
-        println!("  Tool             {}", request.tool_name);
-        println!("  Current mode     {}", self.current_mode.as_str());
-        println!("  Required mode    {}", request.required_mode.as_str());
-        if let Some(reason) = &request.reason {
-            println!("  Reason           {reason}");
-        }
-        println!("  Input            {}", request.input);
-        print!("Approve this tool call? [y/N]: ");
-        let _ = io::stdout().flush();
-
-        let mut response = String::new();
-        match io::stdin().read_line(&mut response) {
-            Ok(_) => {
-                let normalized = response.trim().to_ascii_lowercase();
-                if matches!(normalized.as_str(), "y" | "yes") {
-                    runtime::PermissionPromptDecision::Allow
-                } else {
-                    runtime::PermissionPromptDecision::Deny {
-                        reason: format!(
-                            "tool '{}' denied by user approval prompt",
-                            request.tool_name
-                        ),
-                    }
-                }
-            }
-            Err(error) => runtime::PermissionPromptDecision::Deny {
-                reason: format!("permission approval failed: {error}"),
-            },
-        }
-    }
 }
 
 // NOTE: Despite the historical name `AnthropicRuntimeClient`, this struct
@@ -7959,121 +7121,6 @@ fn collect_prompt_cache_events(summary: &runtime::TurnSummary) -> Vec<serde_json
 }
 
 /// Slash commands that are registered in the spec list but not yet implemented
-/// in this build. Used to filter both REPL completions and help output so the
-/// discovery surface only shows commands that actually work (ROADMAP #39).
-const STUB_COMMANDS: &[&str] = &[
-    "login",
-    "logout",
-    "vim",
-    "upgrade",
-    "share",
-    "feedback",
-    "files",
-    "fast",
-    "exit",
-    "summary",
-    "desktop",
-    "brief",
-    "advisor",
-    "stickers",
-    "insights",
-    "thinkback",
-    "release-notes",
-    "security-review",
-    "keybindings",
-    "privacy-settings",
-    "plan",
-    "review",
-    "tasks",
-    "theme",
-    "voice",
-    "usage",
-    "rename",
-    "copy",
-    "hooks",
-    "context",
-    "color",
-    "effort",
-    "branch",
-    "rewind",
-    "ide",
-    "tag",
-    "output-style",
-    "add-dir",
-    // Spec entries with no parse arm — produce circular "Did you mean" error
-    // without this guard. Adding here routes them to the proper unsupported
-    // message and excludes them from REPL completions / help.
-    // NOTE: do NOT add "stats", "tokens", "cache" — they are implemented.
-    "allowed-tools",
-    "bookmarks",
-    "workspace",
-    "reasoning",
-    "budget",
-    "rate-limit",
-    "changelog",
-    "diagnostics",
-    "metrics",
-    "tool-details",
-    "focus",
-    "unfocus",
-    "pin",
-    "unpin",
-    "language",
-    "profile",
-    "max-tokens",
-    "temperature",
-    "system-prompt",
-    "notifications",
-    "telemetry",
-    "env",
-    "project",
-    "terminal-setup",
-    "api-key",
-    "reset",
-    "undo",
-    "stop",
-    "retry",
-    "paste",
-    "screenshot",
-    "image",
-    "search",
-    "listen",
-    "speak",
-    "format",
-    "test",
-    "lint",
-    "build",
-    "run",
-    "git",
-    "stash",
-    "blame",
-    "log",
-    "cron",
-    "team",
-    "benchmark",
-    "migrate",
-    "templates",
-    "explain",
-    "refactor",
-    "docs",
-    "fix",
-    "perf",
-    "chat",
-    "web",
-    "map",
-    "symbols",
-    "references",
-    "definition",
-    "hover",
-    "autofix",
-    "multi",
-    "macro",
-    "alias",
-    "parallel",
-    "subagent",
-    "agent",
-];
-
 fn slash_command_completion_candidates_with_sessions(
     model: &str,
     active_session_id: Option<&str>,
@@ -8832,19 +7879,6 @@ impl ToolExecutor for CliToolExecutor {
             }
         }
     }
-}
-
-fn permission_policy(
-    mode: PermissionMode,
-    feature_config: &runtime::RuntimeFeatureConfig,
-    tool_registry: &GlobalToolRegistry,
-) -> Result<PermissionPolicy, String> {
-    Ok(tool_registry.permission_specs(None)?.into_iter().fold(
-        PermissionPolicy::new(mode).with_permission_rules(feature_config.permission_rules()),
-        |policy, (name, required_permission)| {
-            policy.with_tool_requirement(name, required_permission)
-        },
-    ))
 }
 
 fn convert_messages(messages: &[ConversationMessage]) -> Vec<InputMessage> {
