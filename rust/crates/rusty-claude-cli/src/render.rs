@@ -1068,3 +1068,1310 @@ mod tests {
         assert!(output.contains("Working"));
     }
 }
+
+// --- Extracted from main.rs ---
+use crate::TokenUsage;
+use crate::*;
+use api::Usage;
+use serde_json::json;
+use std::path::Path;
+
+pub(crate) fn format_unknown_option(option: &str) -> String {
+    let mut message = format!("unknown option: {option}");
+    if let Some(suggestion) = suggest_closest_term(option, CLI_OPTION_SUGGESTIONS) {
+        message.push_str("\nDid you mean ");
+        message.push_str(suggestion);
+        message.push('?');
+    }
+    message.push_str("\nRun `claw --help` for usage.");
+    message
+}
+
+pub(crate) fn format_unknown_direct_slash_command(name: &str) -> String {
+    let mut message = format!("unknown slash command outside the REPL: /{name}");
+    if let Some(suggestions) = render_suggestion_line("Did you mean", &suggest_slash_commands(name))
+    {
+        message.push('\n');
+        message.push_str(&suggestions);
+    }
+    if let Some(note) = omc_compatibility_note_for_unknown_slash_command(name) {
+        message.push('\n');
+        message.push_str(note);
+    }
+    message.push_str("\nRun `claw --help` for CLI usage, or start `claw` and use /help.");
+    message
+}
+
+pub(crate) fn format_unknown_slash_command(name: &str) -> String {
+    let mut message = format!("Unknown slash command: /{name}");
+    if let Some(suggestions) = render_suggestion_line("Did you mean", &suggest_slash_commands(name))
+    {
+        message.push('\n');
+        message.push_str(&suggestions);
+    }
+    if let Some(note) = omc_compatibility_note_for_unknown_slash_command(name) {
+        message.push('\n');
+        message.push_str(note);
+    }
+    message.push_str("\n  Help             /help lists available slash commands");
+    message
+}
+
+pub(crate) fn format_connected_line(model: &str) -> String {
+    let provider = provider_label(detect_provider_kind(model));
+    format!("Connected: {model} via {provider}")
+}
+
+#[cfg(test)]
+pub(crate) fn format_unknown_slash_command_message(name: &str) -> String {
+    let suggestions = suggest_slash_commands(name);
+    let mut message = format!("unknown slash command: /{name}.");
+    if !suggestions.is_empty() {
+        message.push_str(" Did you mean ");
+        message.push_str(&suggestions.join(", "));
+        message.push('?');
+    }
+    if let Some(note) = omc_compatibility_note_for_unknown_slash_command(name) {
+        message.push(' ');
+        message.push_str(note);
+    }
+    message.push_str(" Use /help to list available commands.");
+    message
+}
+
+pub(crate) fn format_model_report(model: &str, message_count: usize, turns: u32) -> String {
+    format!(
+        "Model
+  Current model    {model}
+  Session messages {message_count}
+  Session turns    {turns}
+
+Usage
+  Inspect current model with /model
+  Switch models with /model <name>"
+    )
+}
+
+pub(crate) fn format_model_switch_report(
+    previous: &str,
+    next: &str,
+    message_count: usize,
+) -> String {
+    format!(
+        "Model updated
+  Previous         {previous}
+  Current          {next}
+  Preserved msgs   {message_count}"
+    )
+}
+
+pub(crate) fn format_permissions_report(mode: &str) -> String {
+    let modes = [
+        ("read-only", "Read/search tools only", mode == "read-only"),
+        (
+            "workspace-write",
+            "Edit files inside the workspace",
+            mode == "workspace-write",
+        ),
+        (
+            "danger-full-access",
+            "Unrestricted tool access",
+            mode == "danger-full-access",
+        ),
+    ]
+    .into_iter()
+    .map(|(name, description, is_current)| {
+        let marker = if is_current {
+            "● current"
+        } else {
+            "○ available"
+        };
+        format!("  {name:<18} {marker:<11} {description}")
+    })
+    .collect::<Vec<_>>()
+    .join(
+        "
+",
+    );
+
+    format!(
+        "Permissions
+  Active mode      {mode}
+  Mode status      live session default
+
+Modes
+{modes}
+
+Usage
+  Inspect current mode with /permissions
+  Switch modes with /permissions <mode>"
+    )
+}
+
+pub(crate) fn format_permissions_switch_report(previous: &str, next: &str) -> String {
+    format!(
+        "Permissions updated
+  Result           mode switched
+  Previous mode    {previous}
+  Active mode      {next}
+  Applies to       subsequent tool calls
+  Usage            /permissions to inspect current mode"
+    )
+}
+
+pub(crate) fn format_cost_report(usage: TokenUsage) -> String {
+    format!(
+        "Cost
+  Input tokens     {}
+  Output tokens    {}
+  Cache create     {}
+  Cache read       {}
+  Total tokens     {}",
+        usage.input_tokens,
+        usage.output_tokens,
+        usage.cache_creation_input_tokens,
+        usage.cache_read_input_tokens,
+        usage.total_tokens(),
+    )
+}
+
+pub(crate) fn format_resume_report(session_path: &str, message_count: usize, turns: u32) -> String {
+    format!(
+        "Session resumed
+  Session file     {session_path}
+  Messages         {message_count}
+  Turns            {turns}"
+    )
+}
+
+pub(crate) fn format_compact_report(
+    removed: usize,
+    resulting_messages: usize,
+    skipped: bool,
+) -> String {
+    if skipped {
+        format!(
+            "Compact
+  Result           skipped
+  Reason           session below compaction threshold
+  Messages kept    {resulting_messages}"
+        )
+    } else {
+        format!(
+            "Compact
+  Result           compacted
+  Messages removed {removed}
+  Messages kept    {resulting_messages}"
+        )
+    }
+}
+
+pub(crate) fn format_auto_compaction_notice(removed: usize) -> String {
+    format!("[auto-compacted: removed {removed} messages]")
+}
+
+pub(crate) fn format_session_modified_age(modified_epoch_millis: u128) -> String {
+    let now = std::time::SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .ok()
+        .map_or(modified_epoch_millis, |duration| duration.as_millis());
+    let delta_seconds = now
+        .saturating_sub(modified_epoch_millis)
+        .checked_div(1_000)
+        .unwrap_or_default();
+    match delta_seconds {
+        0..=4 => "just-now".to_string(),
+        5..=59 => format!("{delta_seconds}s-ago"),
+        60..=3_599 => format!("{}m-ago", delta_seconds / 60),
+        3_600..=86_399 => format!("{}h-ago", delta_seconds / 3_600),
+        _ => format!("{}d-ago", delta_seconds / 86_400),
+    }
+}
+
+pub(crate) fn format_status_report(
+    model: &str,
+    usage: StatusUsage,
+    permission_mode: &str,
+    context: &StatusContext,
+    // #148: optional model provenance to surface in a `Model source` line.
+    // Callers without provenance (legacy resume paths) pass None and the
+    // source line is omitted for backward compat.
+    provenance: Option<&ModelProvenance>,
+) -> String {
+    // #143: if config failed to parse, surface a degraded banner at the top
+    // of the text report so humans see the parse error before the body, while
+    // the body below still reports everything that could be resolved without
+    // config (workspace, git, sandbox defaults, etc.).
+    let status_line = if context.config_load_error.is_some() {
+        "Status (degraded)"
+    } else {
+        "Status"
+    };
+    let mut blocks: Vec<String> = Vec::new();
+    if let Some(err) = context.config_load_error.as_deref() {
+        blocks.push(format!(
+            "Config load error\n  Status           fail\n  Summary          runtime config failed to load; reporting partial status\n  Details          {err}\n  Hint             `claw doctor` classifies config parse errors; fix the listed field and rerun"
+        ));
+    }
+    // #148: render Model source line after Model, showing where the string
+    // came from (flag / env / config / default) and the raw input if any.
+    let model_source_line = provenance
+        .map(|p| match &p.raw {
+            Some(raw) if raw != model => {
+                format!("\n  Model source     {} (raw: {raw})", p.source.as_str())
+            }
+            _ => format!("\n  Model source     {}", p.source.as_str()),
+        })
+        .unwrap_or_default();
+    blocks.extend([
+        format!(
+            "{status_line}
+  Model            {model}{model_source_line}
+  Permission mode  {permission_mode}
+  Messages         {}
+  Turns            {}
+  Estimated tokens {}",
+            usage.message_count, usage.turns, usage.estimated_tokens,
+        ),
+        format!(
+            "Usage
+  Latest total     {}
+  Cumulative input {}
+  Cumulative output {}
+  Cumulative total {}",
+            usage.latest.total_tokens(),
+            usage.cumulative.input_tokens,
+            usage.cumulative.output_tokens,
+            usage.cumulative.total_tokens(),
+        ),
+        format!(
+            "Workspace
+  Cwd              {}
+  Project root     {}
+  Git branch       {}
+  Git state        {}
+  Changed files    {}
+  Staged           {}
+  Unstaged         {}
+  Untracked        {}
+  Session          {}
+  Lifecycle        {}
+  Config files     loaded {}/{}
+  Memory files     {}
+  Suggested flow   /status → /diff → /commit",
+            context.cwd.display(),
+            context
+                .project_root
+                .as_ref()
+                .map_or_else(|| "unknown".to_string(), |path| path.display().to_string()),
+            context.git_branch.as_deref().unwrap_or("unknown"),
+            context.git_summary.headline(),
+            context.git_summary.changed_files,
+            context.git_summary.staged_files,
+            context.git_summary.unstaged_files,
+            context.git_summary.untracked_files,
+            context.session_path.as_ref().map_or_else(
+                || "live-repl".to_string(),
+                |path| path.display().to_string()
+            ),
+            context.session_lifecycle.signal(),
+            context.loaded_config_files,
+            context.discovered_config_files,
+            context.memory_file_count,
+        ),
+        format_sandbox_report(&context.sandbox_status),
+    ]);
+    blocks.join("\n\n")
+}
+
+pub(crate) fn format_sandbox_report(status: &runtime::SandboxStatus) -> String {
+    format!(
+        "Sandbox
+  Enabled           {}
+  Active            {}
+  Supported         {}
+  In container      {}
+  Requested ns      {}
+  Active ns         {}
+  Requested net     {}
+  Active net        {}
+  Filesystem mode   {}
+  Filesystem active {}
+  Allowed mounts    {}
+  Markers           {}
+  Fallback reason   {}",
+        status.enabled,
+        status.active,
+        status.supported,
+        status.in_container,
+        status.requested.namespace_restrictions,
+        status.namespace_active,
+        status.requested.network_isolation,
+        status.network_active,
+        status.filesystem_mode.as_str(),
+        status.filesystem_active,
+        if status.allowed_mounts.is_empty() {
+            "<none>".to_string()
+        } else {
+            status.allowed_mounts.join(", ")
+        },
+        if status.container_markers.is_empty() {
+            "<none>".to_string()
+        } else {
+            status.container_markers.join(", ")
+        },
+        status
+            .fallback_reason
+            .clone()
+            .unwrap_or_else(|| "<none>".to_string()),
+    )
+}
+
+pub(crate) fn format_commit_preflight_report(
+    branch: Option<&str>,
+    summary: GitWorkspaceSummary,
+) -> String {
+    format!(
+        "Commit
+  Result           ready
+  Branch           {}
+  Workspace        {}
+  Changed files    {}
+  Action           create a git commit from the current workspace changes",
+        branch.unwrap_or("unknown"),
+        summary.headline(),
+        summary.changed_files,
+    )
+}
+
+pub(crate) fn format_commit_skipped_report() -> String {
+    "Commit
+  Result           skipped
+  Reason           no workspace changes
+  Action           create a git commit from the current workspace changes
+  Next             /status to inspect context · /diff to inspect repo changes"
+        .to_string()
+}
+
+pub(crate) fn format_bughunter_report(scope: Option<&str>) -> String {
+    format!(
+        "Bughunter
+  Scope            {}
+  Action           inspect the selected code for likely bugs and correctness issues
+  Output           findings should include file paths, severity, and suggested fixes",
+        scope.unwrap_or("the current repository")
+    )
+}
+
+pub(crate) fn format_ultraplan_report(task: Option<&str>) -> String {
+    format!(
+        "Ultraplan
+  Task             {}
+  Action           break work into a multi-step execution plan
+  Output           plan should cover goals, risks, sequencing, verification, and rollback",
+        task.unwrap_or("the current repo work")
+    )
+}
+
+pub(crate) fn format_pr_report(branch: &str, context: Option<&str>) -> String {
+    format!(
+        "PR
+  Branch           {branch}
+  Context          {}
+  Action           draft or create a pull request for the current branch
+  Output           title and markdown body suitable for GitHub",
+        context.unwrap_or("none")
+    )
+}
+
+pub(crate) fn format_issue_report(context: Option<&str>) -> String {
+    format!(
+        "Issue
+  Context          {}
+  Action           draft or create a GitHub issue from the current context
+  Output           title and markdown body suitable for GitHub",
+        context.unwrap_or("none")
+    )
+}
+
+pub(crate) fn format_history_timestamp(timestamp_ms: u64) -> String {
+    let secs = timestamp_ms / 1_000;
+    let subsec_ms = timestamp_ms % 1_000;
+    let days_since_epoch = secs / 86_400;
+    let seconds_of_day = secs % 86_400;
+    let hours = seconds_of_day / 3_600;
+    let minutes = (seconds_of_day % 3_600) / 60;
+    let seconds = seconds_of_day % 60;
+
+    let (year, month, day) = civil_from_days(i64::try_from(days_since_epoch).unwrap_or(0));
+    format!("{year:04}-{month:02}-{day:02}T{hours:02}:{minutes:02}:{seconds:02}.{subsec_ms:03}Z")
+}
+
+pub(crate) fn format_internal_prompt_progress_line(
+    event: InternalPromptProgressEvent,
+    snapshot: &InternalPromptProgressState,
+    elapsed: Duration,
+    error: Option<&str>,
+) -> String {
+    let elapsed_seconds = elapsed.as_secs();
+    let step_label = if snapshot.step == 0 {
+        "current step pending".to_string()
+    } else {
+        format!("current step {}", snapshot.step)
+    };
+    let mut status_bits = vec![step_label, format!("phase {}", snapshot.phase)];
+    if let Some(detail) = snapshot
+        .detail
+        .as_deref()
+        .filter(|detail| !detail.is_empty())
+    {
+        status_bits.push(detail.to_string());
+    }
+    let status = status_bits.join(" · ");
+    match event {
+        InternalPromptProgressEvent::Started => {
+            format!(
+                "🧭 {} status · planning started · {status}",
+                snapshot.command_label
+            )
+        }
+        InternalPromptProgressEvent::Update => {
+            format!("… {} status · {status}", snapshot.command_label)
+        }
+        InternalPromptProgressEvent::Heartbeat => format!(
+            "… {} heartbeat · {elapsed_seconds}s elapsed · {status}",
+            snapshot.command_label
+        ),
+        InternalPromptProgressEvent::Complete => format!(
+            "✔ {} status · completed · {elapsed_seconds}s elapsed · {} steps total",
+            snapshot.command_label, snapshot.step
+        ),
+        InternalPromptProgressEvent::Failed => format!(
+            "✘ {} status · failed · {elapsed_seconds}s elapsed · {}",
+            snapshot.command_label,
+            error.unwrap_or("unknown error")
+        ),
+    }
+}
+
+pub(crate) fn format_user_visible_api_error(session_id: &str, error: &api::ApiError) -> String {
+    if error.is_context_window_failure() {
+        format_context_window_blocked_error(session_id, error)
+    } else if error.is_generic_fatal_wrapper() {
+        let mut qualifiers = vec![format!("session {session_id}")];
+        if let Some(request_id) = error.request_id() {
+            qualifiers.push(format!("trace {request_id}"));
+        }
+        format!(
+            "{} ({}): {}",
+            error.safe_failure_class(),
+            qualifiers.join(", "),
+            error
+        )
+    } else {
+        error.to_string()
+    }
+}
+
+pub(crate) fn format_context_window_blocked_error(
+    session_id: &str,
+    error: &api::ApiError,
+) -> String {
+    let mut lines = vec![
+        "Context window blocked".to_string(),
+        "  Failure class    context_window_blocked".to_string(),
+        format!("  Session          {session_id}"),
+    ];
+
+    if let Some(request_id) = error.request_id() {
+        lines.push(format!("  Trace            {request_id}"));
+    }
+
+    match error {
+        api::ApiError::ContextWindowExceeded {
+            model,
+            estimated_input_tokens,
+            requested_output_tokens,
+            estimated_total_tokens,
+            context_window_tokens,
+        } => {
+            lines.push(format!("  Model            {model}"));
+            lines.push(format!(
+                "  Input estimate   ~{estimated_input_tokens} tokens (heuristic)"
+            ));
+            lines.push(format!(
+                "  Requested output {requested_output_tokens} tokens"
+            ));
+            lines.push(format!(
+                "  Total estimate   ~{estimated_total_tokens} tokens (heuristic)"
+            ));
+            lines.push(format!("  Context window   {context_window_tokens} tokens"));
+        }
+        api::ApiError::Api { message, body, .. } => {
+            let detail = message.as_deref().unwrap_or(body).trim();
+            if !detail.is_empty() {
+                lines.push(format!(
+                    "  Detail           {}",
+                    truncate_for_summary(detail, 120)
+                ));
+            }
+        }
+        api::ApiError::RetriesExhausted { last_error, .. } => {
+            let detail = match last_error.as_ref() {
+                api::ApiError::Api { message, body, .. } => message.as_deref().unwrap_or(body),
+                other => return format_context_window_blocked_error(session_id, other),
+            }
+            .trim();
+            if !detail.is_empty() {
+                lines.push(format!(
+                    "  Detail           {}",
+                    truncate_for_summary(detail, 120)
+                ));
+            }
+        }
+        _ => {}
+    }
+
+    lines.push(String::new());
+    lines.push("Recovery".to_string());
+    lines.push("  Compact          /compact".to_string());
+    lines.push(format!(
+        "  Resume compact   claw --resume {session_id} /compact"
+    ));
+    lines.push("  Fresh session    /clear --confirm".to_string());
+    lines.push(
+        "  Reduce scope     remove large pasted context/files or ask for a smaller slice"
+            .to_string(),
+    );
+    lines.push("  Retry            rerun after compacting or reducing the request".to_string());
+
+    lines.join("\n")
+}
+
+pub(crate) fn format_tool_call_start(name: &str, input: &str) -> String {
+    let parsed: serde_json::Value =
+        serde_json::from_str(input).unwrap_or(serde_json::Value::String(input.to_string()));
+
+    let detail = match name {
+        "bash" | "Bash" => format_bash_call(&parsed),
+        "read_file" | "Read" => {
+            let path = extract_tool_path(&parsed);
+            format!("\x1b[2m📄 Reading {path}…\x1b[0m")
+        }
+        "write_file" | "Write" => {
+            let path = extract_tool_path(&parsed);
+            let lines = parsed
+                .get("content")
+                .and_then(|value| value.as_str())
+                .map_or(0, |content| content.lines().count());
+            format!("\x1b[1;32m✏️ Writing {path}\x1b[0m \x1b[2m({lines} lines)\x1b[0m")
+        }
+        "edit_file" | "Edit" => {
+            let path = extract_tool_path(&parsed);
+            let old_value = parsed
+                .get("old_string")
+                .or_else(|| parsed.get("oldString"))
+                .and_then(|value| value.as_str())
+                .unwrap_or_default();
+            let new_value = parsed
+                .get("new_string")
+                .or_else(|| parsed.get("newString"))
+                .and_then(|value| value.as_str())
+                .unwrap_or_default();
+            format!(
+                "\x1b[1;33m📝 Editing {path}\x1b[0m{}",
+                format_patch_preview(old_value, new_value)
+                    .map(|preview| format!("\n{preview}"))
+                    .unwrap_or_default()
+            )
+        }
+        "glob_search" | "Glob" => format_search_start("🔎 Glob", &parsed),
+        "grep_search" | "Grep" => format_search_start("🔎 Grep", &parsed),
+        "web_search" | "WebSearch" => parsed
+            .get("query")
+            .and_then(|value| value.as_str())
+            .unwrap_or("?")
+            .to_string(),
+        _ => summarize_tool_payload(input),
+    };
+
+    let border = "─".repeat(name.len() + 8);
+    format!(
+        "\x1b[38;5;245m╭─ \x1b[1;36m{name}\x1b[0;38;5;245m ─╮\x1b[0m\n\x1b[38;5;245m│\x1b[0m {detail}\n\x1b[38;5;245m╰{border}╯\x1b[0m"
+    )
+}
+
+pub(crate) fn format_tool_result(name: &str, output: &str, is_error: bool) -> String {
+    let icon = if is_error {
+        "\x1b[1;31m✗\x1b[0m"
+    } else {
+        "\x1b[1;32m✓\x1b[0m"
+    };
+    if is_error {
+        let summary = truncate_for_summary(output.trim(), 160);
+        return if summary.is_empty() {
+            format!("{icon} \x1b[38;5;245m{name}\x1b[0m")
+        } else {
+            format!("{icon} \x1b[38;5;245m{name}\x1b[0m\n\x1b[38;5;203m{summary}\x1b[0m")
+        };
+    }
+
+    let parsed: serde_json::Value =
+        serde_json::from_str(output).unwrap_or(serde_json::Value::String(output.to_string()));
+    match name {
+        "bash" | "Bash" => format_bash_result(icon, &parsed),
+        "read_file" | "Read" => format_read_result(icon, &parsed),
+        "write_file" | "Write" => format_write_result(icon, &parsed),
+        "edit_file" | "Edit" => format_edit_result(icon, &parsed),
+        "glob_search" | "Glob" => format_glob_result(icon, &parsed),
+        "grep_search" | "Grep" => format_grep_result(icon, &parsed),
+        _ => format_generic_tool_result(icon, name, &parsed),
+    }
+}
+
+pub(crate) fn format_search_start(label: &str, parsed: &serde_json::Value) -> String {
+    let pattern = parsed
+        .get("pattern")
+        .and_then(|value| value.as_str())
+        .unwrap_or("?");
+    let scope = parsed
+        .get("path")
+        .and_then(|value| value.as_str())
+        .unwrap_or(".");
+    format!("{label} {pattern}\n\x1b[2min {scope}\x1b[0m")
+}
+
+pub(crate) fn format_patch_preview(old_value: &str, new_value: &str) -> Option<String> {
+    if old_value.is_empty() && new_value.is_empty() {
+        return None;
+    }
+    Some(format!(
+        "\x1b[38;5;203m- {}\x1b[0m\n\x1b[38;5;70m+ {}\x1b[0m",
+        truncate_for_summary(first_visible_line(old_value), 72),
+        truncate_for_summary(first_visible_line(new_value), 72)
+    ))
+}
+
+pub(crate) fn format_bash_call(parsed: &serde_json::Value) -> String {
+    let command = parsed
+        .get("command")
+        .and_then(|value| value.as_str())
+        .unwrap_or_default();
+    if command.is_empty() {
+        String::new()
+    } else {
+        format!(
+            "\x1b[48;5;236;38;5;255m $ {} \x1b[0m",
+            truncate_for_summary(command, 160)
+        )
+    }
+}
+
+pub(crate) fn format_bash_result(icon: &str, parsed: &serde_json::Value) -> String {
+    use std::fmt::Write as _;
+
+    let mut lines = vec![format!("{icon} \x1b[38;5;245mbash\x1b[0m")];
+    if let Some(task_id) = parsed
+        .get("backgroundTaskId")
+        .and_then(|value| value.as_str())
+    {
+        write!(&mut lines[0], " backgrounded ({task_id})").expect("write to string");
+    } else if let Some(status) = parsed
+        .get("returnCodeInterpretation")
+        .and_then(|value| value.as_str())
+        .filter(|status| !status.is_empty())
+    {
+        write!(&mut lines[0], " {status}").expect("write to string");
+    }
+
+    if let Some(stdout) = parsed.get("stdout").and_then(|value| value.as_str()) {
+        if !stdout.trim().is_empty() {
+            lines.push(truncate_output_for_display(
+                stdout,
+                TOOL_OUTPUT_DISPLAY_MAX_LINES,
+                TOOL_OUTPUT_DISPLAY_MAX_CHARS,
+            ));
+        }
+    }
+    if let Some(stderr) = parsed.get("stderr").and_then(|value| value.as_str()) {
+        if !stderr.trim().is_empty() {
+            lines.push(format!(
+                "\x1b[38;5;203m{}\x1b[0m",
+                truncate_output_for_display(
+                    stderr,
+                    TOOL_OUTPUT_DISPLAY_MAX_LINES,
+                    TOOL_OUTPUT_DISPLAY_MAX_CHARS,
+                )
+            ));
+        }
+    }
+
+    lines.join("\n\n")
+}
+
+pub(crate) fn format_read_result(icon: &str, parsed: &serde_json::Value) -> String {
+    let file = parsed.get("file").unwrap_or(parsed);
+    let path = extract_tool_path(file);
+    let start_line = file
+        .get("startLine")
+        .and_then(serde_json::Value::as_u64)
+        .unwrap_or(1);
+    let num_lines = file
+        .get("numLines")
+        .and_then(serde_json::Value::as_u64)
+        .unwrap_or(0);
+    let total_lines = file
+        .get("totalLines")
+        .and_then(serde_json::Value::as_u64)
+        .unwrap_or(num_lines);
+    let content = file
+        .get("content")
+        .and_then(|value| value.as_str())
+        .unwrap_or_default();
+    let end_line = start_line.saturating_add(num_lines.saturating_sub(1));
+
+    format!(
+        "{icon} \x1b[2m📄 Read {path} (lines {}-{} of {})\x1b[0m\n{}",
+        start_line,
+        end_line.max(start_line),
+        total_lines,
+        truncate_output_for_display(content, READ_DISPLAY_MAX_LINES, READ_DISPLAY_MAX_CHARS)
+    )
+}
+
+pub(crate) fn format_write_result(icon: &str, parsed: &serde_json::Value) -> String {
+    let path = extract_tool_path(parsed);
+    let kind = parsed
+        .get("type")
+        .and_then(|value| value.as_str())
+        .unwrap_or("write");
+    let line_count = parsed
+        .get("content")
+        .and_then(|value| value.as_str())
+        .map_or(0, |content| content.lines().count());
+    format!(
+        "{icon} \x1b[1;32m✏️ {} {path}\x1b[0m \x1b[2m({line_count} lines)\x1b[0m",
+        if kind == "create" { "Wrote" } else { "Updated" },
+    )
+}
+
+pub(crate) fn format_structured_patch_preview(parsed: &serde_json::Value) -> Option<String> {
+    let hunks = parsed.get("structuredPatch")?.as_array()?;
+    let mut preview = Vec::new();
+    for hunk in hunks.iter().take(2) {
+        let lines = hunk.get("lines")?.as_array()?;
+        for line in lines.iter().filter_map(|value| value.as_str()).take(6) {
+            match line.chars().next() {
+                Some('+') => preview.push(format!("\x1b[38;5;70m{line}\x1b[0m")),
+                Some('-') => preview.push(format!("\x1b[38;5;203m{line}\x1b[0m")),
+                _ => preview.push(line.to_string()),
+            }
+        }
+    }
+    if preview.is_empty() {
+        None
+    } else {
+        Some(preview.join("\n"))
+    }
+}
+
+pub(crate) fn format_edit_result(icon: &str, parsed: &serde_json::Value) -> String {
+    let path = extract_tool_path(parsed);
+    let suffix = if parsed
+        .get("replaceAll")
+        .and_then(serde_json::Value::as_bool)
+        .unwrap_or(false)
+    {
+        " (replace all)"
+    } else {
+        ""
+    };
+    let preview = format_structured_patch_preview(parsed).or_else(|| {
+        let old_value = parsed
+            .get("oldString")
+            .and_then(|value| value.as_str())
+            .unwrap_or_default();
+        let new_value = parsed
+            .get("newString")
+            .and_then(|value| value.as_str())
+            .unwrap_or_default();
+        format_patch_preview(old_value, new_value)
+    });
+
+    match preview {
+        Some(preview) => format!("{icon} \x1b[1;33m📝 Edited {path}{suffix}\x1b[0m\n{preview}"),
+        None => format!("{icon} \x1b[1;33m📝 Edited {path}{suffix}\x1b[0m"),
+    }
+}
+
+pub(crate) fn format_glob_result(icon: &str, parsed: &serde_json::Value) -> String {
+    let num_files = parsed
+        .get("numFiles")
+        .and_then(serde_json::Value::as_u64)
+        .unwrap_or(0);
+    let filenames = parsed
+        .get("filenames")
+        .and_then(|value| value.as_array())
+        .map(|files| {
+            files
+                .iter()
+                .filter_map(|value| value.as_str())
+                .take(8)
+                .collect::<Vec<_>>()
+                .join("\n")
+        })
+        .unwrap_or_default();
+    if filenames.is_empty() {
+        format!("{icon} \x1b[38;5;245mglob_search\x1b[0m matched {num_files} files")
+    } else {
+        format!("{icon} \x1b[38;5;245mglob_search\x1b[0m matched {num_files} files\n{filenames}")
+    }
+}
+
+pub(crate) fn format_grep_result(icon: &str, parsed: &serde_json::Value) -> String {
+    let num_matches = parsed
+        .get("numMatches")
+        .and_then(serde_json::Value::as_u64)
+        .unwrap_or(0);
+    let num_files = parsed
+        .get("numFiles")
+        .and_then(serde_json::Value::as_u64)
+        .unwrap_or(0);
+    let content = parsed
+        .get("content")
+        .and_then(|value| value.as_str())
+        .unwrap_or_default();
+    let filenames = parsed
+        .get("filenames")
+        .and_then(|value| value.as_array())
+        .map(|files| {
+            files
+                .iter()
+                .filter_map(|value| value.as_str())
+                .take(8)
+                .collect::<Vec<_>>()
+                .join("\n")
+        })
+        .unwrap_or_default();
+    let summary = format!(
+        "{icon} \x1b[38;5;245mgrep_search\x1b[0m {num_matches} matches across {num_files} files"
+    );
+    if !content.trim().is_empty() {
+        format!(
+            "{summary}\n{}",
+            truncate_output_for_display(
+                content,
+                TOOL_OUTPUT_DISPLAY_MAX_LINES,
+                TOOL_OUTPUT_DISPLAY_MAX_CHARS,
+            )
+        )
+    } else if !filenames.is_empty() {
+        format!("{summary}\n{filenames}")
+    } else {
+        summary
+    }
+}
+
+pub(crate) fn format_generic_tool_result(
+    icon: &str,
+    name: &str,
+    parsed: &serde_json::Value,
+) -> String {
+    let rendered_output = match parsed {
+        serde_json::Value::String(text) => text.clone(),
+        serde_json::Value::Null => String::new(),
+        serde_json::Value::Object(_) | serde_json::Value::Array(_) => {
+            serde_json::to_string_pretty(parsed).unwrap_or_else(|_| parsed.to_string())
+        }
+        _ => parsed.to_string(),
+    };
+    let preview = truncate_output_for_display(
+        &rendered_output,
+        TOOL_OUTPUT_DISPLAY_MAX_LINES,
+        TOOL_OUTPUT_DISPLAY_MAX_CHARS,
+    );
+
+    if preview.is_empty() {
+        format!("{icon} \x1b[38;5;245m{name}\x1b[0m")
+    } else if preview.contains('\n') {
+        format!("{icon} \x1b[38;5;245m{name}\x1b[0m\n{preview}")
+    } else {
+        format!("{icon} \x1b[38;5;245m{name}:\x1b[0m {preview}")
+    }
+}
+
+pub(crate) fn render_suggestion_line(label: &str, suggestions: &[String]) -> Option<String> {
+    (!suggestions.is_empty()).then(|| format!("  {label:<16} {}", suggestions.join(", "),))
+}
+
+pub(crate) fn render_repl_help() -> String {
+    [
+        "REPL".to_string(),
+        "  /exit                Quit the REPL".to_string(),
+        "  /quit                Quit the REPL".to_string(),
+        "  Up/Down              Navigate prompt history".to_string(),
+        "  Ctrl-R               Reverse-search prompt history".to_string(),
+        "  Tab                  Complete commands, modes, and recent sessions".to_string(),
+        "  Ctrl-C               Clear input (or exit on empty prompt)".to_string(),
+        "  Shift+Enter/Ctrl+J   Insert a newline".to_string(),
+        "  Auto-save            .claw/sessions/<session-id>.jsonl".to_string(),
+        "  Resume latest        /resume latest".to_string(),
+        "  Browse sessions      /session list".to_string(),
+        "  Show prompt history  /history [count]".to_string(),
+        String::new(),
+        render_slash_command_help_filtered(STUB_COMMANDS),
+    ]
+    .join(
+        "
+",
+    )
+}
+
+pub(crate) fn render_help_topic(topic: LocalHelpTopic) -> String {
+    match topic {
+        LocalHelpTopic::Status => "Status
+  Usage            claw status [--output-format <format>]
+  Purpose          show the local workspace snapshot without entering the REPL
+  Output           model, permissions, git state, config files, and sandbox status
+  Formats          text (default), json
+  Related          /status · claw --resume latest /status"
+            .to_string(),
+        LocalHelpTopic::Sandbox => "Sandbox
+  Usage            claw sandbox [--output-format <format>]
+  Purpose          inspect the resolved sandbox and isolation state for the current directory
+  Output           namespace, network, filesystem, and fallback details
+  Formats          text (default), json
+  Related          /sandbox · claw status"
+            .to_string(),
+        LocalHelpTopic::Doctor => "Doctor
+  Usage            claw doctor [--output-format <format>]
+  Purpose          diagnose local auth, config, workspace, sandbox, and build metadata
+  Output           local-only health report; no provider request or session resume required
+  Formats          text (default), json
+  Related          /doctor · claw --resume latest /doctor"
+            .to_string(),
+        LocalHelpTopic::Acp => "ACP / Zed
+  Usage            claw acp [serve] [--output-format <format>]
+  Aliases          claw --acp · claw -acp
+  Purpose          explain the current editor-facing ACP/Zed launch contract without starting the runtime
+  Status           discoverability only; `serve` is a status alias and does not launch a daemon yet
+  Formats          text (default), json
+  Related          ROADMAP #64a (discoverability) · ROADMAP #76 (real ACP support) · claw --help"
+            .to_string(),
+        LocalHelpTopic::Init => "Init
+  Usage            claw init [--output-format <format>]
+  Purpose          create .claw/, .claw.json, .gitignore, and CLAUDE.md in the current project
+  Output           list of created vs. skipped files (idempotent: safe to re-run)
+  Formats          text (default), json
+  Related          claw status · claw doctor"
+            .to_string(),
+        LocalHelpTopic::State => "State
+  Usage            claw state [--output-format <format>]
+  Purpose          read .claw/worker-state.json written by the interactive REPL or a one-shot prompt
+  Output           worker id, model, permissions, session reference (text or json)
+  Formats          text (default), json
+  Produces state   `claw` (interactive REPL) or `claw prompt <text>` (one non-interactive turn)
+  Observes state   `claw state` reads; clawhip/CI may poll this file without HTTP
+  Exit codes       0 if state file exists and parses; 1 with actionable hint otherwise
+  Related          claw status · ROADMAP #139 (this worker-concept contract)"
+            .to_string(),
+        LocalHelpTopic::Export => "Export
+  Usage            claw export [--session <id|latest>] [--output <path>] [--output-format <format>]
+  Purpose          serialize a managed session to JSON for review, transfer, or archival
+  Defaults         --session latest (most recent managed session in .claw/sessions/)
+  Formats          text (default), json
+  Related          /session list · claw --resume latest"
+            .to_string(),
+        LocalHelpTopic::Version => "Version
+  Usage            claw version [--output-format <format>]
+  Aliases          claw --version · claw -V
+  Purpose          print the claw CLI version and build metadata
+  Formats          text (default), json
+  Related          claw doctor (full build/auth/config diagnostic)"
+            .to_string(),
+        LocalHelpTopic::SystemPrompt => "System Prompt
+  Usage            claw system-prompt [--cwd <path>] [--date YYYY-MM-DD] [--output-format <format>]
+  Purpose          render the resolved system prompt that `claw` would send for the given cwd + date
+  Options          --cwd overrides the workspace dir · --date injects a deterministic date stamp
+  Formats          text (default), json
+  Related          claw doctor · claw dump-manifests"
+            .to_string(),
+        LocalHelpTopic::DumpManifests => "Dump Manifests
+  Usage            claw dump-manifests [--manifests-dir <path>] [--output-format <format>]
+  Purpose          emit every skill/agent/tool manifest the resolver would load for the current cwd
+  Options          --manifests-dir scopes discovery to a specific directory
+  Formats          text (default), json
+  Related          claw skills · claw agents · claw doctor"
+            .to_string(),
+        LocalHelpTopic::BootstrapPlan => "Bootstrap Plan
+  Usage            claw bootstrap-plan [--output-format <format>]
+  Purpose          list the ordered startup phases the CLI would execute before dispatch
+  Output           phase names (text) or structured phase list (json) — primary output is the plan itself
+  Formats          text (default), json
+  Related          claw doctor · claw status"
+            .to_string(),
+    }
+}
+
+pub(crate) fn render_prompt_history_report(entries: &[PromptHistoryEntry], limit: usize) -> String {
+    if entries.is_empty() {
+        return "Prompt history\n  Result           no prompts recorded yet".to_string();
+    }
+
+    let total = entries.len();
+    let start = total.saturating_sub(limit);
+    let shown = &entries[start..];
+    let mut lines = vec![
+        "Prompt history".to_string(),
+        format!("  Total            {total}"),
+        format!("  Showing          {} most recent", shown.len()),
+        format!("  Reverse search   Ctrl-R in the REPL"),
+        String::new(),
+    ];
+    for (offset, entry) in shown.iter().enumerate() {
+        let absolute_index = start + offset + 1;
+        let timestamp = format_history_timestamp(entry.timestamp_ms);
+        let first_line = entry.text.lines().next().unwrap_or("").trim();
+        let display = if first_line.chars().count() > 80 {
+            let truncated: String = first_line.chars().take(77).collect();
+            format!("{truncated}...")
+        } else {
+            first_line.to_string()
+        };
+        lines.push(format!("  {absolute_index:>3}. [{timestamp}] {display}"));
+    }
+    lines.join("\n")
+}
+
+pub(crate) fn render_version_report() -> String {
+    let git_sha = GIT_SHA.unwrap_or("unknown");
+    let target = BUILD_TARGET.unwrap_or("unknown");
+    format!(
+        "Claw Code\n  Version          {VERSION}\n  Git SHA          {git_sha}\n  Target           {target}\n  Build date       {DEFAULT_DATE}"
+    )
+}
+
+pub(crate) fn render_export_text(session: &Session) -> String {
+    let mut lines = vec!["# Conversation Export".to_string(), String::new()];
+    for (index, message) in session.messages.iter().enumerate() {
+        let role = match message.role {
+            MessageRole::System => "system",
+            MessageRole::User => "user",
+            MessageRole::Assistant => "assistant",
+            MessageRole::Tool => "tool",
+        };
+        lines.push(format!("## {}. {role}", index + 1));
+        for block in &message.blocks {
+            match block {
+                ContentBlock::Text { text } => lines.push(text.clone()),
+                ContentBlock::ToolUse { id, name, input } => {
+                    lines.push(format!("[tool_use id={id} name={name}] {input}"));
+                }
+                ContentBlock::ToolResult {
+                    tool_use_id,
+                    tool_name,
+                    output,
+                    is_error,
+                } => {
+                    lines.push(format!(
+                        "[tool_result id={tool_use_id} name={tool_name} error={is_error}] {output}"
+                    ));
+                }
+                ContentBlock::Thinking {
+                    thinking,
+                    signature,
+                } => {
+                    lines.push(format!("[thinking signature={signature:?}] {thinking}"));
+                }
+            }
+        }
+        lines.push(String::new());
+    }
+    lines.join("\n")
+}
+
+pub(crate) fn render_session_markdown(
+    session: &Session,
+    session_id: &str,
+    session_path: &Path,
+) -> String {
+    let mut lines = vec![
+        "# Conversation Export".to_string(),
+        String::new(),
+        format!("- **Session**: `{session_id}`"),
+        format!("- **File**: `{}`", session_path.display()),
+        format!("- **Messages**: {}", session.messages.len()),
+    ];
+    if let Some(workspace_root) = session.workspace_root() {
+        lines.push(format!("- **Workspace**: `{}`", workspace_root.display()));
+    }
+    if let Some(fork) = &session.fork {
+        let branch = fork.branch_name.as_deref().unwrap_or("(unnamed)");
+        lines.push(format!(
+            "- **Forked from**: `{}` (branch `{branch}`)",
+            fork.parent_session_id
+        ));
+    }
+    if let Some(compaction) = &session.compaction {
+        lines.push(format!(
+            "- **Compactions**: {} (last removed {} messages)",
+            compaction.count, compaction.removed_message_count
+        ));
+    }
+    lines.push(String::new());
+    lines.push("---".to_string());
+    lines.push(String::new());
+
+    for (index, message) in session.messages.iter().enumerate() {
+        let role = match message.role {
+            MessageRole::System => "System",
+            MessageRole::User => "User",
+            MessageRole::Assistant => "Assistant",
+            MessageRole::Tool => "Tool",
+        };
+        lines.push(format!("## {}. {role}", index + 1));
+        lines.push(String::new());
+        for block in &message.blocks {
+            match block {
+                ContentBlock::Text { text } => {
+                    let trimmed = text.trim_end();
+                    if !trimmed.is_empty() {
+                        lines.push(trimmed.to_string());
+                        lines.push(String::new());
+                    }
+                }
+                ContentBlock::ToolUse { id, name, input } => {
+                    lines.push(format!(
+                        "**Tool call** `{name}` _(id `{}`)_",
+                        short_tool_id(id)
+                    ));
+                    let summary = summarize_tool_payload_for_markdown(input);
+                    if !summary.is_empty() {
+                        lines.push(format!("> {summary}"));
+                    }
+                    lines.push(String::new());
+                }
+                ContentBlock::ToolResult {
+                    tool_use_id,
+                    tool_name,
+                    output,
+                    is_error,
+                } => {
+                    let status = if *is_error { "error" } else { "ok" };
+                    lines.push(format!(
+                        "**Tool result** `{tool_name}` _(id `{}`, {status})_",
+                        short_tool_id(tool_use_id)
+                    ));
+                    let summary = summarize_tool_payload_for_markdown(output);
+                    if !summary.is_empty() {
+                        lines.push(format!("> {summary}"));
+                    }
+                    lines.push(String::new());
+                }
+                ContentBlock::Thinking {
+                    thinking,
+                    signature,
+                } => {
+                    lines.push(format!("**Thinking** _{signature:?}_"));
+                    let summary = summarize_tool_payload_for_markdown(thinking);
+                    if !summary.is_empty() {
+                        lines.push(format!("> {summary}"));
+                    }
+                    lines.push(String::new());
+                }
+            }
+        }
+        if let Some(usage) = message.usage {
+            lines.push(format!(
+                "_tokens: in={} out={} cache_create={} cache_read={}_",
+                usage.input_tokens,
+                usage.output_tokens,
+                usage.cache_creation_input_tokens,
+                usage.cache_read_input_tokens,
+            ));
+            lines.push(String::new());
+        }
+    }
+    lines.join("\n")
+}
+
+pub(crate) fn render_thinking_block_summary(
+    out: &mut (impl Write + ?Sized),
+    char_count: Option<usize>,
+    redacted: bool,
+) -> Result<(), RuntimeError> {
+    let summary = if redacted {
+        "\n▶ Thinking block hidden by provider\n".to_string()
+    } else if let Some(char_count) = char_count {
+        format!("\n▶ Thinking ({char_count} chars hidden)\n")
+    } else {
+        "\n▶ Thinking hidden\n".to_string()
+    };
+    write!(out, "{summary}")
+        .and_then(|()| out.flush())
+        .map_err(|error| RuntimeError::new(error.to_string()))
+}
+
+pub(crate) fn push_output_block(
+    block: OutputContentBlock,
+    out: &mut (impl Write + ?Sized),
+    events: &mut Vec<AssistantEvent>,
+    pending_tool: &mut Option<(String, String, String)>,
+    streaming_tool_input: bool,
+    block_has_thinking_summary: &mut bool,
+) -> Result<(), RuntimeError> {
+    match block {
+        OutputContentBlock::Text { text } => {
+            if !text.is_empty() {
+                let rendered = TerminalRenderer::new().markdown_to_ansi(&text);
+                write!(out, "{rendered}")
+                    .and_then(|()| out.flush())
+                    .map_err(|error| RuntimeError::new(error.to_string()))?;
+                events.push(AssistantEvent::TextDelta(text));
+            }
+        }
+        OutputContentBlock::ToolUse { id, name, input } => {
+            // During streaming, the initial content_block_start has an empty input ({}).
+            // The real input arrives via input_json_delta events. In
+            // non-streaming responses, preserve a legitimate empty object.
+            let initial_input = if streaming_tool_input
+                && input.is_object()
+                && input.as_object().is_some_and(serde_json::Map::is_empty)
+            {
+                String::new()
+            } else {
+                input.to_string()
+            };
+            *pending_tool = Some((id, name, initial_input));
+        }
+        OutputContentBlock::Thinking { thinking, .. } => {
+            render_thinking_block_summary(out, Some(thinking.chars().count()), false)?;
+            *block_has_thinking_summary = true;
+        }
+        OutputContentBlock::RedactedThinking { .. } => {
+            render_thinking_block_summary(out, None, true)?;
+            *block_has_thinking_summary = true;
+        }
+    }
+    Ok(())
+}
+
+pub(crate) fn summarize_tool_payload_for_markdown(payload: &str) -> String {
+    let compact = match serde_json::from_str::<serde_json::Value>(payload) {
+        Ok(value) => value.to_string(),
+        Err(_) => payload.split_whitespace().collect::<Vec<_>>().join(" "),
+    };
+    if compact.is_empty() {
+        return String::new();
+    }
+    truncate_for_summary(&compact, SESSION_MARKDOWN_TOOL_SUMMARY_LIMIT)
+}
+
+pub(crate) fn short_tool_id(id: &str) -> String {
+    let char_count = id.chars().count();
+    if char_count <= 12 {
+        return id.to_string();
+    }
+    let prefix: String = id.chars().take(12).collect();
+    format!("{prefix}…")
+}

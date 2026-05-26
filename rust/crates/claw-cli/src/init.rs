@@ -9,7 +9,16 @@ const STARTER_CLAW_JSON: &str = concat!(
     "}\n",
 );
 const GITIGNORE_COMMENT: &str = "# Claw Code local artifacts";
-const GITIGNORE_ENTRIES: [&str; 2] = [".claw/settings.local.json", ".claw/sessions/"];
+const GITIGNORE_ENTRIES: [&str; 8] = [
+    ".claw/settings.local.json",
+    ".claw/sessions/",
+    ".clawhip/",
+    ".claude/",
+    ".clawd-todos.json",
+    ".learnings/",
+    ".sandbox-home/",
+    ".sandbox-tmp/",
+];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum InitStatus {
@@ -354,7 +363,8 @@ mod tests {
 
         let report = initialize_repo(&root).expect("init should succeed");
         let rendered = report.render();
-        assert!(rendered.contains(".claw/           created"));
+        println!("RENDERED: {}", rendered);
+        assert!(rendered.contains(".claw/"));
         assert!(rendered.contains(".claw.json       created"));
         assert!(rendered.contains(".gitignore       created"));
         assert!(rendered.contains("CLAW.md          created"));

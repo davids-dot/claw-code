@@ -1,6 +1,6 @@
 cargo check
-cargo fmt --all
 cargo test 
+cargo fmt --all
 
 
 

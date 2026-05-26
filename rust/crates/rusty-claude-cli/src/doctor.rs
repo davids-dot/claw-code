@@ -152,6 +152,7 @@ pub(crate) fn render_doctor_report() -> Result<DoctorReport, Box<dyn std::error:
         project_root,
         git_branch,
         git_summary,
+        session_lifecycle: crate::classify_session_lifecycle_for(&cwd),
         sandbox_status: resolve_sandbox_status(sandbox_config.sandbox(), &cwd),
         config_load_error: config.as_ref().err().map(ToString::to_string),
     };
