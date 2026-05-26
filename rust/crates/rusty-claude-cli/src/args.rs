@@ -18,6 +18,7 @@ use crate::model::*;
 use crate::normalize_permission_mode;
 use crate::resume_command_can_absorb_token;
 
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum CliAction {
     DumpManifests {
         output_format: CliOutputFormat,
@@ -145,7 +146,7 @@ pub(crate) enum CliOutputFormat {
 }
 
 impl CliOutputFormat {
-    fn parse(value: &str) -> Result<Self, String> {
+    pub(crate) fn parse(value: &str) -> Result<Self, String> {
         match value {
             "text" => Ok(Self::Text),
             "json" => Ok(Self::Json),
