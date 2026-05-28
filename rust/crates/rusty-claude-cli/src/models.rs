@@ -1,97 +1,6 @@
-use crate::DEFAULT_MODEL;
-use crate::{config_model_for_current_dir, resolve_model_alias_with_config};
 use serde_json::json;
 use std::env;
 use std::path::PathBuf;
-
-/// #148: Model provenance for `claw status` JSON/text output. Records where
-/// the resolved model string came from so claws don't have to re-read argv
-/// to audit whether their `--model` flag was honored vs falling back to env
-/// or config or default.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum ModelSource {
-    /// Explicit `--model` / `--model=` CLI flag.
-    Flag,
-    /// ANTHROPIC_MODEL environment variable (when no flag was passed).
-    Env,
-    /// `model` key in `.claw.json` / `.claw/settings.json` (when neither
-    /// flag nor env set it).
-    Config,
-    /// Compiled-in DEFAULT_MODEL fallback.
-    Default,
-}
-
-impl ModelSource {
-    pub(crate) fn as_str(&self) -> &'static str {
-        match self {
-            ModelSource::Flag => "flag",
-            ModelSource::Env => "env",
-            ModelSource::Config => "config",
-            ModelSource::Default => "default",
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct ModelProvenance {
-    /// Resolved model string (after alias expansion).
-    pub(crate) resolved: String,
-    /// Raw user input before alias resolution. None when source is Default.
-    pub(crate) raw: Option<String>,
-    /// Where the resolved model string originated.
-    pub(crate) source: ModelSource,
-}
-
-impl ModelProvenance {
-    pub(crate) fn default_fallback() -> Self {
-        Self {
-            resolved: DEFAULT_MODEL.to_string(),
-            raw: None,
-            source: ModelSource::Default,
-        }
-    }
-
-    pub(crate) fn from_flag(raw: &str) -> Self {
-        Self {
-            resolved: resolve_model_alias_with_config(raw),
-            raw: Some(raw.to_string()),
-            source: ModelSource::Flag,
-        }
-    }
-
-    pub(crate) fn from_env_or_config_or_default(cli_model: &str) -> Self {
-        // Only called when no --model flag was passed. Probe env first,
-        // then config, else fall back to default. Mirrors the logic in
-        // resolve_repl_model() but captures the source.
-        if cli_model != DEFAULT_MODEL {
-            // Already resolved from some prior path; treat as flag.
-            return Self {
-                resolved: cli_model.to_string(),
-                raw: Some(cli_model.to_string()),
-                source: ModelSource::Flag,
-            };
-        }
-        if let Some(env_model) = env::var("ANTHROPIC_MODEL")
-            .ok()
-            .map(|value| value.trim().to_string())
-            .filter(|value| !value.is_empty())
-        {
-            return Self {
-                resolved: resolve_model_alias_with_config(&env_model),
-                raw: Some(env_model),
-                source: ModelSource::Env,
-            };
-        }
-        if let Some(config_model) = config_model_for_current_dir() {
-            return Self {
-                resolved: resolve_model_alias_with_config(&config_model),
-                raw: Some(config_model),
-                source: ModelSource::Config,
-            };
-        }
-        Self::default_fallback()
-    }
-}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum SessionLifecycleKind {
@@ -144,7 +53,7 @@ impl SessionLifecycleSummary {
     }
 
     pub(crate) fn json_value(&self) -> serde_json::Value {
-        json!({
+       serde_json::json!({
             "kind": self.kind.as_str(),
             "pane_id": self.pane_id,
             "pane_command": self.pane_command,
@@ -221,8 +130,4 @@ pub(crate) struct ManagedSessionSummary {
     pub(crate) lifecycle: SessionLifecycleSummary,
 }
 
-#[derive(Debug, Clone)]
-pub(crate) struct PromptHistoryEntry {
-    pub(crate) timestamp_ms: u64,
-    pub(crate) text: String,
-}
+

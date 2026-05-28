@@ -1,20 +1,23 @@
 schema: spec-driven
 
-# Project context (optional)
-# This is shown to AI when creating artifacts.
-# Add your tech stack, conventions, style guides, domain knowledge, etc.
-# Example:
-#   context: |
-#     Tech stack: TypeScript, React, Node.js
-#     We use conventional commits
-#     Domain: e-commerce platform
+context: |
+  Rust CLI application using crossterm, rustyline, tokio, serde, pulldown-cmark, syntect.
+  Workspace layout: crates/* (Cargo workspace).
+  Target crate: rusty-claude-cli (binary "claw").
+  The main.rs is 13,292 lines — a God File that needs to be split into focused modules.
+  User rule: any function ≤ 60 lines, any file ≤ 2000 lines (new files), file structure should document abstraction boundaries.
 
-# Per-artifact rules (optional)
-# Add custom rules for specific artifacts.
-# Example:
-#   rules:
-#     proposal:
-#       - Keep proposals under 500 words
-#       - Always include a "Non-goals" section
-#     tasks:
-#       - Break tasks into chunks of max 2 hours
+rules:
+  proposal:
+    - Propose splitting strategy with clear dependency order
+    - Reference specific line ranges and function names from main.rs
+    - Include risk assessment per phase
+  design:
+    - Design module boundaries with file-level responsibility descriptions
+    - Define public API surface for each new module
+    - Address cross-cutting concerns: testing, visibility, re-exports
+  tasks:
+    - One task per file creation/migration step
+    - Each task must include "compiles and tests pass" as completion criteria
+    - Order tasks by dependency: low-level modules first, then higher-level ones
+    - Total execution: ~18 discrete tasks, each verifiable
