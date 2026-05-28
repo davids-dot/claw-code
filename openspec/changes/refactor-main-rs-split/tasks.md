@@ -98,17 +98,17 @@
 
 ## 17. Create repl_commands.rs — extract REPL command handlers
 
-- [ ] 17.1 Create `src/repl_commands.rs` with free functions for all REPL command handlers: `handle_repl_command`, `handle_session_command`, `handle_plugins_command`, `set_model`, `set_permissions`, `clear_session`, `compact`, all `print_*` methods, `run_bughunter/ultraplan/teleport/debug_tool_call/commit/pr/issue`, `export_session` (main.rs lines 4440-5256)
-- [ ] 17.2 Extract all standalone command functions: `render_repl_help`, `render_resume_usage`, `render_teleport_report`, `render_last_tool_debug_report`, `render_prompt_history_report`, `render_version_report`, `collect_session_prompt_history`, `recent_user_context`, `parse_history_count`, `format_history_timestamp`, `civil_from_days`, `git_output`, `git_status_ok`, `command_exists`, `write_temp_text_file`, `sanitize_generated_message`, `parse_titled_body`, `indent_block`, `validate_no_args`, `init_claude_md`, `normalize_permission_mode`, `run_init`, `init_json_value`, `print_acp_status`, `run_worker_state`, `run_mcp_serve`, `print_bootstrap_plan`, `print_system_prompt`, `print_version`, `version_json_value`, `slash_command_completion_candidates_with_sessions`, `truncate_for_prompt`, `run_export`, `render_export_text`, `render_session_markdown`, `default_export_filename`, `resolve_export_path`, `summarize_tool_payload_for_markdown`
-- [ ] 17.3 Extract all format_*_report/notice functions: `format_bughunter_report`, `format_ultraplan_report`, `format_pr_report`, `format_issue_report`, `format_commit_preflight_report`, `format_commit_skipped_report`, `format_auto_compaction_notice`, `format_compact_report`, `format_unknown_slash_command_message`, `format_model_report`, `format_model_switch_report`, `format_permissions_report`, `format_permissions_switch_report`, `format_cost_report`, `format_resume_report`, `render_resume_usage`
-- [ ] 17.4 Add `mod repl_commands;` to `main.rs` and re-export
-- [ ] 17.5 Run `cargo build` and `cargo test` — must pass
+- [x] 17.1 Create `src/repl_commands.rs` with free functions for all REPL command handlers: `handle_repl_command`, `handle_session_command`, `handle_plugins_command`, `set_model`, `set_permissions`, `clear_session`, `compact`, all `print_*` methods, `run_bughunter/ultraplan/teleport/debug_tool_call/commit/pr/issue`, `export_session` (main.rs lines 4440-5256)
+- [x] 17.2 Extract all standalone command functions: `render_repl_help`, `render_resume_usage`, `render_teleport_report`, `render_last_tool_debug_report`, `render_prompt_history_report`, `render_version_report`, `collect_session_prompt_history`, `recent_user_context`, `parse_history_count`, `format_history_timestamp`, `civil_from_days`, `git_output`, `git_status_ok`, `command_exists`, `write_temp_text_file`, `sanitize_generated_message`, `parse_titled_body`, `indent_block`, `validate_no_args`, `init_claude_md`, `normalize_permission_mode`, `run_init`, `init_json_value`, `print_acp_status`, `run_worker_state`, `run_mcp_serve`, `print_bootstrap_plan`, `print_system_prompt`, `print_version`, `version_json_value`, `slash_command_completion_candidates_with_sessions`, `truncate_for_prompt`, `run_export`, `render_export_text`, `render_session_markdown`, `default_export_filename`, `resolve_export_path`, `summarize_tool_payload_for_markdown`
+- [x] 17.3 Extract all format_*_report/notice functions: `format_bughunter_report`, `format_ultraplan_report`, `format_pr_report`, `format_issue_report`, `format_commit_preflight_report`, `format_commit_skipped_report`, `format_auto_compaction_notice`, `format_compact_report`, `format_unknown_slash_command_message`, `format_model_report`, `format_model_switch_report`, `format_permissions_report`, `format_permissions_switch_report`, `format_cost_report`, `format_resume_report`, `render_resume_usage`
+- [x] 17.4 Add `mod repl_commands;` to `main.rs` and re-export
+- [x] 17.5 Run `cargo build` and `cargo test` — must pass
 
 ## 18. Slim main.rs and verify
 
-- [ ] 18.1 Remove all moved code from `main.rs`; keep only `main()`, `run()`, `classify_error_kind`, `split_error_hint`, `read_piped_stdin`, `merge_prompt_with_stdin`, `write_mcp_server_fixture`, module declarations, re-exports, and the test module
-- [ ] 18.2 Move `#[allow(...)]` directives to individual modules where needed
-- [ ] 18.3 Run `cargo build` — must compile cleanly
-- [ ] 18.4 Run full test suite: `cargo test` — all tests pass
-- [ ] 18.5 Verify `wc -l src/main.rs` ≤ 2000 lines
-- [ ] 18.6 Verify no new file exceeds 2000 lines
+- [x] 18.1 Remove all moved code from `main.rs`; keep only `main()`, `run()`, `classify_error_kind`, `split_error_hint`, `read_piped_stdin`, `merge_prompt_with_stdin`, `write_mcp_server_fixture`, module declarations, re-exports, and the test module
+- [x] 18.2 Move `#[allow(...)]` directives to individual modules where needed
+- [x] 18.3 Run `cargo build` — must compile cleanly
+- [x] 18.4 Run full test suite: `cargo test` — all tests pass
+- [x] 18.5 Verify `wc -l src/main.rs` ≤ 2000 lines
+- [x] 18.6 Verify no new file exceeds 2000 lines

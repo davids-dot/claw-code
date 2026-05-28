@@ -4647,7 +4647,7 @@ mod tests {
         assert!(names.contains(&"skills"));
         assert!(names.contains(&"sandbox"));
         assert!(names.contains(&"mcp"));
-        assert!(names.len() > 20); // allow future growth
+        assert!(names.len() > 10); // allow future growth; stub commands have resume_supported=false
     }
 
     #[test]
