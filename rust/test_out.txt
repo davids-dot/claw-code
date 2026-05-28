@@ -1,0 +1,256 @@
+
+running 192 tests
+test config::models::tests::resolves_known_model_aliases ... ok
+test config::models::tests::resolve_repl_model_returns_user_supplied_model_unchanged_when_explicit ... ok
+test dump_manifests_tests::dump_manifests_shows_helpful_error_when_manifests_missing ... ok
+test config::models::tests::resolve_repl_model_falls_back_to_anthropic_model_env_when_default ... ok
+test init::tests::artifacts_with_status_partitions_fresh_and_idempotent_runs ... ok
+test init::tests::initialize_repo_creates_expected_files_and_gitignore_entries ... ok
+test init::tests::initialize_repo_is_idempotent_and_preserves_existing_files ... ok
+test input::tests::extracts_terminal_slash_command_prefixes_with_arguments ... ok
+test config::models::tests::resolve_repl_model_returns_default_when_env_unset_and_no_config ... ok
+test dump_manifests_tests::dump_manifests_uses_explicit_manifest_dir ... ok
+test init::tests::render_init_template_mentions_detected_python_and_nextjs_markers ... ok
+test input::tests::completes_matching_slash_command_arguments ... ok
+test input::tests::ignores_non_slash_command_completion_requests ... ok
+test input::tests::completes_matching_slash_commands ... ok
+test input::tests::push_history_ignores_blank_entries ... ok
+test input::tests::set_completions_replaces_and_normalizes_candidates ... ok
+test input::tests::tracks_current_buffer_through_highlighter ... ok
+test main_tests::tests::accepts_valid_reasoning_effort_values ... ok
+test config::models::tests::user_defined_aliases_resolve_before_provider_dispatch ... ok
+test main_tests::tests::classify_error_kind_returns_correct_discriminants ... ok
+test main_tests::tests::bare_skill_dispatch_ignores_unknown_or_non_skill_input ... ok
+test main_tests::tests::clear_command_requires_explicit_confirmation_flag ... ok
+test main_tests::tests::collect_session_prompt_history_extracts_user_text_blocks ... ok
+test main_tests::tests::commit_reports_surface_workspace_context ... ok
+test main_tests::tests::commit_skipped_report_points_to_next_steps ... ok
+test main_tests::tests::compact_report_uses_structured_output ... ok
+test main_tests::tests::completion_candidates_include_workflow_shortcuts_and_dynamic_sessions ... ok
+test main_tests::tests::config_report_supports_section_views ... ok
+test main_tests::tests::config_report_uses_sectioned_layout ... ok
+test main_tests::tests::context_window_preflight_errors_render_recovery_steps ... ok
+test main_tests::tests::converts_tool_roundtrip_messages ... ok
+test main_tests::tests::cost_report_uses_sectioned_layout ... ok
+test main_tests::tests::bare_skill_dispatch_resolves_known_project_skill_to_prompt ... ok
+test main_tests::tests::cwd_guard_recovers_after_poisoning ... ok
+test main_tests::tests::build_runtime_plugin_state_merges_plugin_hooks_into_runtime_features ... ok
+test main_tests::tests::describe_tool_progress_summarizes_known_tools ... ok
+test main_tests::tests::direct_slash_commands_surface_shared_validation_errors ... ok
+test main_tests::tests::dump_manifests_subcommand_accepts_explicit_manifest_dir ... ok
+test main_tests::tests::build_runtime_plugin_state_surfaces_unsupported_mcp_servers_structurally ... ok
+test main_tests::tests::filtered_tool_specs_include_plugin_tools ... ok
+test main_tests::tests::filtered_tool_specs_respect_allowlist ... ok
+test main_tests::tests::format_connected_line_renders_anthropic_provider_for_claude_model ... ok
+test main_tests::tests::format_connected_line_renders_xai_provider_for_grok_model ... ok
+test main_tests::tests::format_history_timestamp_renders_iso8601_utc ... ok
+test main_tests::tests::format_history_timestamp_renders_unix_epoch_origin ... ok
+test main_tests::tests::formats_namespaced_omc_slash_command_with_contract_guidance ... ok
+test main_tests::tests::formats_unknown_slash_command_with_suggestions ... ok
+test main_tests::tests::help_mentions_jsonl_resume_examples ... ok
+test main_tests::tests::init_help_mentions_direct_subcommand ... ok
+test main_tests::tests::init_template_mentions_detected_rust_workspace ... ok
+test main_tests::tests::build_runtime_runs_plugin_lifecycle_init_and_shutdown ... ok
+test main_tests::tests::dangerously_skip_permissions_flag_applies_to_prompt_subcommand ... ok
+test main_tests::tests::dangerously_skip_permissions_flag_forces_danger_full_access_in_repl ... ok
+test main_tests::tests::local_command_help_flags_stay_on_the_local_parser_path ... ok
+test main_tests::tests::memory_report_uses_sectioned_layout ... ok
+test main_tests::tests::merge_prompt_with_stdin_appends_piped_content_as_context ... ok
+test main_tests::tests::merge_prompt_with_stdin_ignores_whitespace_only_pipe ... ok
+test main_tests::tests::merge_prompt_with_stdin_returns_pipe_when_prompt_is_empty ... ok
+test main_tests::tests::merge_prompt_with_stdin_returns_prompt_unchanged_when_no_pipe ... ok
+test main_tests::tests::merge_prompt_with_stdin_trims_surrounding_whitespace_on_pipe ... ok
+test main_tests::tests::model_report_uses_sectioned_layout ... ok
+test main_tests::tests::model_switch_report_preserves_context_summary ... ok
+test main_tests::tests::multi_word_prompt_still_bypasses_subcommand_typo_guard ... ok
+test main_tests::tests::latest_session_alias_resolves_most_recent_managed_session ... ok
+test main_tests::tests::no_arg_commands_reject_unexpected_arguments ... ok
+test main_tests::tests::normalizes_supported_permission_modes ... ok
+test main_tests::tests::opaque_provider_wrapper_surfaces_failure_class_session_and_trace ... ok
+test main_tests::tests::parse_export_args_helper_defaults_to_latest_reference_and_no_output ... ok
+test main_tests::tests::parse_history_count_accepts_positive_integers ... ok
+test main_tests::tests::parse_history_count_defaults_to_twenty_when_missing ... ok
+test main_tests::tests::parse_history_count_rejects_non_numeric ... ok
+test main_tests::tests::parse_history_count_rejects_zero ... ok
+test main_tests::tests::parses_acp_command_surfaces ... ok
+test main_tests::tests::load_session_reference_rejects_workspace_mismatch ... ok
+test main_tests::tests::managed_sessions_default_to_jsonl_and_resolve_legacy_json ... ok
+test main_tests::tests::default_permission_mode_uses_project_config_when_env_is_unset ... ok
+test main_tests::tests::defaults_to_repl_when_no_args ... ok
+test main_tests::tests::env_permission_mode_overrides_project_config_default ... ok
+test main_tests::tests::multi_word_prompt_still_uses_shorthand_prompt_mode ... ok
+test main_tests::tests::parses_export_subcommand_with_inline_flag_values ... ok
+test main_tests::tests::parses_export_subcommand_with_json_output_format ... ok
+test main_tests::tests::parses_export_subcommand_with_positional_output_path ... ok
+test main_tests::tests::parses_direct_agents_mcp_and_skills_slash_commands ... ok
+test main_tests::tests::parses_export_subcommand_with_session_and_output_flags ... ok
+test main_tests::tests::parses_git_workspace_summary_counts ... ok
+test main_tests::tests::parses_json_output_for_mcp_and_skills_commands ... ok
+test main_tests::tests::parses_permission_mode_flag ... ok
+test main_tests::tests::parses_allowed_tools_flags_with_aliases_and_lists ... ok
+test main_tests::tests::parses_bare_export_subcommand_targeting_latest_session ... ok
+test main_tests::tests::parses_resume_and_config_slash_commands ... ok
+test main_tests::tests::parses_resume_flag_with_absolute_export_path ... ok
+test main_tests::tests::parses_resume_flag_with_multiple_slash_commands ... ok
+test main_tests::tests::parses_bare_prompt_and_json_output_flag ... ok
+test main_tests::tests::parses_resume_flag_with_slash_command ... ok
+test main_tests::tests::parses_resume_flag_without_path_as_latest_session ... ok
+test main_tests::tests::parses_compact_flag_for_prompt_mode ... ok
+test main_tests::tests::parses_detached_head_from_status_snapshot ... ok
+test main_tests::tests::parses_single_word_command_aliases_without_falling_back_to_prompt_mode ... ok
+test main_tests::tests::parses_resume_flag_with_slash_command_arguments ... ok
+test main_tests::tests::parses_system_prompt_options ... ok
+test main_tests::tests::parses_version_flags_without_initializing_prompt_mode ... ok
+test main_tests::tests::permissions_report_uses_sectioned_layout ... ok
+test main_tests::tests::parses_prompt_subcommand ... ok
+test main_tests::tests::permissions_switch_report_is_structured ... ok
+test main_tests::tests::provider_context_window_errors_are_reframed_with_same_guidance ... ok
+test main_tests::tests::prompt_subcommand_allows_literal_typo_word ... ok
+test main_tests::tests::push_output_block_skips_empty_object_prefix_for_tool_streams ... ok
+test main_tests::tests::rejects_export_with_extra_positional_after_path ... ok
+test main_tests::tests::rejects_invalid_reasoning_effort_value ... ok
+test main_tests::tests::permission_policy_uses_plugin_tool_permissions ... ok
+test main_tests::tests::rejects_unknown_export_options_with_helpful_message ... ok
+test main_tests::tests::rejects_unknown_options_with_helpful_guidance ... ok
+test main_tests::tests::rejects_unknown_allowed_tools ... ok
+test main_tests::tests::removed_login_and_logout_subcommands_error_helpfully ... ok
+test main_tests::tests::rejects_empty_allowed_tools_flag ... ok
+test main_tests::tests::parses_git_status_metadata ... ok
+test main_tests::tests::render_prompt_history_report_handles_empty_history ... ok
+test main_tests::tests::prompt_subcommand_defaults_compact_to_false ... ok
+test main_tests::tests::render_prompt_history_report_truncates_to_limit_from_the_tail ... ok
+test main_tests::tests::render_prompt_history_report_lists_entries_with_timestamps ... ok
+test main_tests::tests::render_session_markdown_marks_tool_errors_and_skips_empty_summaries ... ok
+test main_tests::tests::punctuation_bearing_single_token_still_dispatches_to_prompt ... ok
+test main_tests::tests::render_session_markdown_includes_header_and_summarized_tool_calls ... ok
+test main_tests::tests::repl_help_mentions_history_completion_and_multiline ... ok
+test main_tests::tests::repl_help_includes_shared_commands_and_exit ... ok
+test main_tests::tests::push_output_block_renders_markdown_text ... ok
+test main_tests::tests::resolve_repl_model_returns_user_supplied_model_unchanged_when_explicit ... ok
+test main_tests::tests::resolves_known_model_aliases ... ok
+test main_tests::tests::render_diff_report_includes_staged_and_unstaged_sections ... ok
+test main_tests::tests::response_to_events_preserves_empty_object_json_input_outside_streaming ... ok
+test main_tests::tests::response_to_events_preserves_non_empty_json_input_outside_streaming ... ok
+test main_tests::tests::build_runtime_plugin_state_discovers_mcp_tools_and_surfaces_pending_servers ... ok
+test main_tests::tests::response_to_events_renders_collapsed_thinking_summary ... ok
+test main_tests::tests::resume_report_uses_sectioned_layout ... ok
+test main_tests::tests::resume_supported_command_list_matches_expected_surface ... ok
+test main_tests::tests::resume_usage_mentions_latest_shortcut ... ok
+test main_tests::tests::retry_exhaustion_uses_retry_failure_class_for_generic_provider_wrapper ... ok
+test main_tests::tests::retry_wrapped_context_window_errors_keep_recovery_guidance ... ok
+test main_tests::tests::runtime_slash_reports_describe_command_behavior ... ok
+test main_tests::tests::render_diff_report_omits_ignored_files ... ok
+test main_tests::tests::session_lifecycle_prefers_running_process_over_idle_shell ... ok
+test main_tests::tests::render_diff_report_shows_clean_tree_for_committed_repo ... ok
+test main_tests::tests::shared_help_uses_resume_annotation_copy ... ok
+test main_tests::tests::short_tool_id_truncates_long_identifiers_with_ellipsis ... ok
+test main_tests::tests::single_word_slash_command_names_return_guidance_instead_of_hitting_prompt_mode ... ok
+test main_tests::tests::split_error_hint_separates_reason_from_runbook ... ok
+test main_tests::tests::resolve_cli_auth_source_ignores_saved_oauth_credentials ... ok
+test main_tests::tests::session_list_surfaces_saved_dirty_abandoned_lifecycle ... ok
+test main_tests::tests::resolve_repl_model_falls_back_to_anthropic_model_env_when_default ... ok
+test main_tests::tests::resolve_repl_model_returns_default_when_env_unset_and_no_config ... ok
+test main_tests::tests::status_json_surfaces_session_lifecycle_for_clawhip ... ok
+test main_tests::tests::status_line_reports_model_and_token_totals ... ok
+test main_tests::tests::stub_commands_absent_from_repl_completions ... ok
+test main_tests::tests::stub_commands_absent_from_resume_safe_help ... ok
+test main_tests::tests::subcommand_help_flag_has_one_contract_across_all_subcommands_141 ... ok
+test main_tests::tests::summarize_tool_payload_for_markdown_compacts_json_and_truncates_overflow ... ok
+test main_tests::tests::tool_rendering_helpers_compact_output ... ok
+test main_tests::tests::tool_rendering_truncates_generic_long_output_for_display_only ... ok
+test main_tests::tests::tool_rendering_truncates_large_bash_output_for_display_only ... ok
+test main_tests::tests::tool_rendering_truncates_large_read_output_for_display_only ... ok
+test main_tests::tests::tool_rendering_truncates_raw_generic_output_for_display_only ... ok
+test main_tests::tests::resolves_model_aliases_in_args ... ok
+test main_tests::tests::typoed_doctor_subcommand_returns_did_you_mean_error ... ok
+test main_tests::tests::typoed_export_subcommand_returns_did_you_mean_error ... ok
+test main_tests::tests::typoed_mcp_subcommand_returns_did_you_mean_error ... ok
+test main_tests::tests::typoed_skills_subcommand_returns_did_you_mean_error ... ok
+test main_tests::tests::typoed_status_subcommand_returns_did_you_mean_error ... ok
+test main_tests::tests::ultraplan_progress_lines_include_phase_step_and_elapsed_status ... ok
+test main_tests::tests::unknown_slash_command_guidance_suggests_nearby_commands ... ok
+test main_tests::tests::unknown_omc_slash_command_guidance_explains_runtime_gap ... ok
+test permissions::prompter::tests::permission_policy_uses_plugin_tool_permissions ... ok
+test main_tests::tests::status_context_reads_real_workspace_metadata ... ok
+test render::tests::highlights_fenced_code_blocks ... ok
+test render::tests::renders_links_as_colored_markdown_labels ... ok
+test render::tests::renders_markdown_with_styling_and_lists ... ok
+test render::tests::renders_ordered_and_nested_lists ... ok
+test render::tests::renders_nested_fenced_code_block_preserves_inner_markers ... ok
+test render::tests::renders_tables_with_alignment ... ok
+test main_tests::tests::resume_diff_command_renders_report_for_saved_session ... ok
+test render::tests::spinner_advances_frames ... ok
+test render::tests::streaming_state_distinguishes_backtick_and_tilde_fences ... ok
+test sandbox_report_tests::hook_abort_monitor_propagates_interrupt ... ok
+test sandbox_report_tests::hook_abort_monitor_stops_without_aborting ... ok
+test sandbox_report_tests::sandbox_report_renders_expected_fields ... ok
+test ui::progress::tests::describe_tool_progress_summarizes_known_tools ... ok
+test render::tests::streaming_state_holds_outer_fence_with_nested_inner_fence ... ok
+test render::tests::streaming_state_waits_for_complete_blocks ... ok
+test main_tests::tests::session_lifecycle_marks_dirty_idle_shell_as_abandoned ... ok
+test main_tests::tests::startup_banner_mentions_workflow_completions ... ok
+test main_tests::tests::state_error_surfaces_actionable_worker_commands_139 ... ok
+test main_tests::tests::status_degrades_gracefully_on_malformed_mcp_config_143 ... ok
+test main_tests::tests::user_defined_aliases_resolve_before_provider_dispatch ... ok
+
+test result: ok. 192 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.66s
+
+
+running 7 tests
+test local_subcommand_help_does_not_fall_through_to_runtime_or_provider_calls ... ok
+test config_command_loads_defaults_from_standard_config_locations ... ok
+test omc_namespaced_slash_commands_surface_a_targeted_compatibility_hint ... ok
+test slash_command_names_match_known_commands_and_suggest_nearby_unknown_ones ... ok
+test status_command_applies_model_and_permission_mode_flags ... ok
+test resume_flag_loads_a_saved_session_and_dispatches_status ... ok
+test doctor_command_runs_as_a_local_shell_entrypoint ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.47s
+
+
+running 3 tests
+test compact_flag_streaming_text_only_emits_final_message_text ... ok
+test compact_flag_with_json_output_emits_structured_json ... ok
+test compact_flag_prints_only_final_assistant_text_without_tool_call_details ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.15s
+
+
+running 1 test
+test clean_env_cli_reaches_mock_anthropic_service_across_scripted_parity_scenarios ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.43s
+
+
+running 11 tests
+test help_emits_json_when_requested ... ok
+test agents_command_emits_structured_agent_entries_when_requested ... ok
+test acp_guidance_emits_json_when_requested ... ok
+test version_emits_json_when_requested ... ok
+test resumed_inventory_commands_emit_structured_json_when_requested ... ok
+test dump_manifests_and_init_emit_json_when_requested ... ok
+test inventory_commands_emit_structured_json_when_requested ... ok
+test resumed_version_and_init_emit_structured_json_when_requested ... ok
+test bootstrap_and_system_prompt_emit_json_when_requested ... ok
+test status_and_sandbox_emit_json_when_requested ... ok
+test doctor_and_resume_status_emit_json_when_requested ... ok
+
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.12s
+
+
+running 12 tests
+test resumed_config_command_loads_settings_files_end_to_end ... ok
+test resumed_help_command_emits_structured_json ... ok
+test resumed_sandbox_command_emits_structured_json_when_requested ... ok
+test resumed_no_command_emits_restored_json ... ok
+test resumed_export_command_emits_structured_json ... ok
+test resumed_binary_accepts_slash_commands_with_arguments ... ok
+test resumed_stub_command_emits_not_implemented_json ... ok
+test resumed_version_command_emits_structured_json ... ok
+test status_command_applies_cli_flags_end_to_end ... ok
+test resume_latest_restores_the_most_recent_managed_session ... ok
+test resumed_status_command_emits_structured_json_when_requested ... ok
+test resumed_status_surfaces_persisted_model ... ok
+
+test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.07s
+

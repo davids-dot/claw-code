@@ -1,3 +1,4 @@
+use crate::diagnostics::{render_doctor_report, run_mcp_serve};
 use crate::TokenUsage;
 use crate::*;
 use api::Usage;

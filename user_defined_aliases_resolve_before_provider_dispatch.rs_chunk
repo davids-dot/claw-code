@@ -1,0 +1,38 @@
+#[test]
+    fn user_defined_aliases_resolve_before_provider_dispatch() {
+        // given
+        let _guard = env_lock();
+        let root = temp_dir();
+        let cwd = root.join("project");
+        let config_home = root.join("config-home");
+        std::fs::create_dir_all(cwd.join(".claw")).expect("project config dir should exist");
+        std::fs::create_dir_all(&config_home).expect("config home should exist");
+        std::fs::write(
+            cwd.join(".claw").join("settings.json"),
+            r#"{"aliases":{"fast":"claude-haiku-4-5-20251213","smart":"opus","cheap":"grok-3-mini"}}"#,
+        )
+        .expect("project config should write");
+
+        let original_config_home = std::env::var("CLAW_CONFIG_HOME").ok();
+        std::env::set_var("CLAW_CONFIG_HOME", &config_home);
+
+        // when
+        let direct = with_current_dir(&cwd, || resolve_model_alias_with_config("fast"));
+        let chained = with_current_dir(&cwd, || resolve_model_alias_with_config("smart"));
+        let cross_provider = with_current_dir(&cwd, || resolve_model_alias_with_config("cheap"));
+        let unknown = with_current_dir(&cwd, || resolve_model_alias_with_config("unknown-model"));
+        let builtin = with_current_dir(&cwd, || resolve_model_alias_with_config("haiku"));
+
+        match original_config_home {
+            Some(value) => std::env::set_var("CLAW_CONFIG_HOME", value),
+            None => std::env::remove_var("CLAW_CONFIG_HOME"),
+        }
+        std::fs::remove_dir_all(root).expect("temp config root should clean up");
+
+        // then
+        assert_eq!(direct, "claude-haiku-4-5-20251213");
+        assert_eq!(chained, "claude-opus-4-6");
+        assert_eq!(cross_provider, "grok-3-mini");
+        assert_eq!(unknown, "unknown-model");
+        assert_eq!(builtin, "claude-haiku-4-5-20251213");
+    }

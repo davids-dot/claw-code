@@ -638,52 +638,9 @@ mod tests {
         );
     }
 
-    #[test]
-    fn resolves_known_model_aliases() {
-        assert_eq!(resolve_model_alias("opus"), "claude-opus-4-6");
-        assert_eq!(resolve_model_alias("sonnet"), "claude-sonnet-4-6");
-        assert_eq!(resolve_model_alias("haiku"), "claude-haiku-4-5-20251213");
-        assert_eq!(resolve_model_alias("claude-opus"), "claude-opus");
-    }
+    
 
-    #[test]
-    fn user_defined_aliases_resolve_before_provider_dispatch() {
-        // given
-        let _guard = env_lock();
-        let root = temp_dir();
-        let cwd = root.join("project");
-        let config_home = root.join("config-home");
-        std::fs::create_dir_all(cwd.join(".claw")).expect("project config dir should exist");
-        std::fs::create_dir_all(&config_home).expect("config home should exist");
-        std::fs::write(
-            cwd.join(".claw").join("settings.json"),
-            r#"{"aliases":{"fast":"claude-haiku-4-5-20251213","smart":"opus","cheap":"grok-3-mini"}}"#,
-        )
-        .expect("project config should write");
-
-        let original_config_home = std::env::var("CLAW_CONFIG_HOME").ok();
-        std::env::set_var("CLAW_CONFIG_HOME", &config_home);
-
-        // when
-        let direct = with_current_dir(&cwd, || resolve_model_alias_with_config("fast"));
-        let chained = with_current_dir(&cwd, || resolve_model_alias_with_config("smart"));
-        let cross_provider = with_current_dir(&cwd, || resolve_model_alias_with_config("cheap"));
-        let unknown = with_current_dir(&cwd, || resolve_model_alias_with_config("unknown-model"));
-        let builtin = with_current_dir(&cwd, || resolve_model_alias_with_config("haiku"));
-
-        match original_config_home {
-            Some(value) => std::env::set_var("CLAW_CONFIG_HOME", value),
-            None => std::env::remove_var("CLAW_CONFIG_HOME"),
-        }
-        std::fs::remove_dir_all(root).expect("temp config root should clean up");
-
-        // then
-        assert_eq!(direct, "claude-haiku-4-5-20251213");
-        assert_eq!(chained, "claude-opus-4-6");
-        assert_eq!(cross_provider, "grok-3-mini");
-        assert_eq!(unknown, "unknown-model");
-        assert_eq!(builtin, "claude-haiku-4-5-20251213");
-    }
+    
 
     #[test]
     fn parses_version_flags_without_initializing_prompt_mode() {
@@ -1799,20 +1756,7 @@ mod tests {
         assert!(truncated.chars().count() <= 281);
     }
 
-    #[test]
-    fn short_tool_id_truncates_long_identifiers_with_ellipsis() {
-        // given
-        let long = "toolu_01ABCDEFGHIJKLMN";
-        let short = "tool_1";
-
-        // when
-        let trimmed_long = short_tool_id(long);
-        let trimmed_short = short_tool_id(short);
-
-        // then
-        assert_eq!(trimmed_long, "toolu_01ABCD…");
-        assert_eq!(trimmed_short, "tool_1");
-    }
+    
 
     #[test]
     fn parses_json_output_for_mcp_and_skills_commands() {
@@ -2256,18 +2200,7 @@ mod tests {
         assert!(names.contains(&"plugin_echo".to_string()));
     }
 
-    #[test]
-    fn permission_policy_uses_plugin_tool_permissions() {
-        let feature_config = runtime::RuntimeFeatureConfig::default();
-        let policy = permission_policy(
-            PermissionMode::ReadOnly,
-            &feature_config,
-            &registry_with_plugin_tool(),
-        )
-        .expect("permission policy should build");
-        let required = policy.required_mode_for("plugin_echo");
-        assert_eq!(required, PermissionMode::WorkspaceWrite);
-    }
+    
 
     #[test]
     fn shared_help_uses_resume_annotation_copy() {
@@ -2403,52 +2336,11 @@ mod tests {
         assert_eq!(line, "Connected: grok-3 via xai");
     }
 
-    #[test]
-    fn resolve_repl_model_returns_user_supplied_model_unchanged_when_explicit() {
-        let user_model = "claude-sonnet-4-6".to_string();
+    
 
-        let resolved = resolve_repl_model(user_model);
+    
 
-        assert_eq!(resolved, "claude-sonnet-4-6");
-    }
-
-    #[test]
-    fn resolve_repl_model_falls_back_to_anthropic_model_env_when_default() {
-        let _guard = env_lock();
-        let root = temp_dir();
-        fs::create_dir_all(&root).expect("root dir");
-        let config_home = root.join("config");
-        fs::create_dir_all(&config_home).expect("config home dir");
-        std::env::set_var("CLAW_CONFIG_HOME", &config_home);
-        std::env::remove_var("ANTHROPIC_MODEL");
-        std::env::set_var("ANTHROPIC_MODEL", "sonnet");
-
-        let resolved = with_current_dir(&root, || resolve_repl_model(DEFAULT_MODEL.to_string()));
-
-        assert_eq!(resolved, "claude-sonnet-4-6");
-
-        std::env::remove_var("ANTHROPIC_MODEL");
-        std::env::remove_var("CLAW_CONFIG_HOME");
-        fs::remove_dir_all(root).expect("cleanup temp dir");
-    }
-
-    #[test]
-    fn resolve_repl_model_returns_default_when_env_unset_and_no_config() {
-        let _guard = env_lock();
-        let root = temp_dir();
-        fs::create_dir_all(&root).expect("root dir");
-        let config_home = root.join("config");
-        fs::create_dir_all(&config_home).expect("config home dir");
-        std::env::set_var("CLAW_CONFIG_HOME", &config_home);
-        std::env::remove_var("ANTHROPIC_MODEL");
-
-        let resolved = with_current_dir(&root, || resolve_repl_model(DEFAULT_MODEL.to_string()));
-
-        assert_eq!(resolved, DEFAULT_MODEL);
-
-        std::env::remove_var("CLAW_CONFIG_HOME");
-        fs::remove_dir_all(root).expect("cleanup temp dir");
-    }
+    
 
     #[test]
     fn resume_supported_command_list_matches_expected_surface() {
@@ -3471,107 +3363,15 @@ UU conflicted.rs",
         assert_eq!(entries[1].text, "world");
     }
 
-    #[test]
-    fn tool_rendering_helpers_compact_output() {
-        let start = format_tool_call_start("read_file", r#"{"path":"src/main.rs"}"#);
-        assert!(start.contains("read_file"));
-        assert!(start.contains("src/main.rs"));
+    
 
-        let done = format_tool_result(
-            "read_file",
-            r#"{"file":{"filePath":"src/main.rs","content":"hello","numLines":1,"startLine":1,"totalLines":1}}"#,
-            false,
-        );
-        assert!(done.contains("📄 Read src/main.rs"));
-        assert!(done.contains("hello"));
-    }
+    
 
-    #[test]
-    fn tool_rendering_truncates_large_read_output_for_display_only() {
-        let content = (0..200)
-            .map(|index| format!("line {index:03}"))
-            .collect::<Vec<_>>()
-            .join("\n");
-        let output = json!({
-            "file": {
-                "filePath": "src/main.rs",
-                "content": content,
-                "numLines": 200,
-                "startLine": 1,
-                "totalLines": 200
-            }
-        })
-        .to_string();
+    
 
-        let rendered = format_tool_result("read_file", &output, false);
+    
 
-        assert!(rendered.contains("line 000"));
-        assert!(rendered.contains("line 079"));
-        assert!(!rendered.contains("line 199"));
-        assert!(rendered.contains("full result preserved in session"));
-        assert!(output.contains("line 199"));
-    }
-
-    #[test]
-    fn tool_rendering_truncates_large_bash_output_for_display_only() {
-        let stdout = (0..120)
-            .map(|index| format!("stdout {index:03}"))
-            .collect::<Vec<_>>()
-            .join("\n");
-        let output = json!({
-            "stdout": stdout,
-            "stderr": "",
-            "returnCodeInterpretation": "completed successfully"
-        })
-        .to_string();
-
-        let rendered = format_tool_result("bash", &output, false);
-
-        assert!(rendered.contains("stdout 000"));
-        assert!(rendered.contains("stdout 059"));
-        assert!(!rendered.contains("stdout 119"));
-        assert!(rendered.contains("full result preserved in session"));
-        assert!(output.contains("stdout 119"));
-    }
-
-    #[test]
-    fn tool_rendering_truncates_generic_long_output_for_display_only() {
-        let items = (0..120)
-            .map(|index| format!("payload {index:03}"))
-            .collect::<Vec<_>>();
-        let output = json!({
-            "summary": "plugin payload",
-            "items": items,
-        })
-        .to_string();
-
-        let rendered = format_tool_result("plugin_echo", &output, false);
-
-        assert!(rendered.contains("plugin_echo"));
-        assert!(rendered.contains("payload 000"));
-        assert!(rendered.contains("payload 040"));
-        assert!(!rendered.contains("payload 080"));
-        assert!(!rendered.contains("payload 119"));
-        assert!(rendered.contains("full result preserved in session"));
-        assert!(output.contains("payload 119"));
-    }
-
-    #[test]
-    fn tool_rendering_truncates_raw_generic_output_for_display_only() {
-        let output = (0..120)
-            .map(|index| format!("raw {index:03}"))
-            .collect::<Vec<_>>()
-            .join("\n");
-
-        let rendered = format_tool_result("plugin_echo", &output, false);
-
-        assert!(rendered.contains("plugin_echo"));
-        assert!(rendered.contains("raw 000"));
-        assert!(rendered.contains("raw 059"));
-        assert!(!rendered.contains("raw 119"));
-        assert!(rendered.contains("full result preserved in session"));
-        assert!(output.contains("raw 119"));
-    }
+    
 
     #[test]
     fn ultraplan_progress_lines_include_phase_step_and_elapsed_status() {
@@ -3620,21 +3420,7 @@ UU conflicted.rs",
         assert!(failed.contains("network timeout"));
     }
 
-    #[test]
-    fn describe_tool_progress_summarizes_known_tools() {
-        assert_eq!(
-            describe_tool_progress("read_file", r#"{"path":"src/main.rs"}"#),
-            "reading src/main.rs"
-        );
-        assert!(
-            describe_tool_progress("bash", r#"{"command":"cargo test -p rusty-claude-cli"}"#)
-                .contains("cargo test -p rusty-claude-cli")
-        );
-        assert_eq!(
-            describe_tool_progress("grep_search", r#"{"pattern":"ultraplan","path":"rust"}"#),
-            "grep `ultraplan` in rust"
-        );
-    }
+    
 
     #[test]
     fn push_output_block_renders_markdown_text() {
@@ -3688,376 +3474,19 @@ UU conflicted.rs",
         );
     }
 
-    #[test]
-    fn response_to_events_preserves_empty_object_json_input_outside_streaming() {
-        let mut out = Vec::new();
-        let events = response_to_events(
-            MessageResponse {
-                id: "msg-1".to_string(),
-                kind: "message".to_string(),
-                model: "claude-opus-4-6".to_string(),
-                role: "assistant".to_string(),
-                content: vec![OutputContentBlock::ToolUse {
-                    id: "tool-1".to_string(),
-                    name: "read_file".to_string(),
-                    input: json!({}),
-                }],
-                stop_reason: Some("tool_use".to_string()),
-                stop_sequence: None,
-                usage: Usage {
-                    input_tokens: 1,
-                    output_tokens: 1,
-                    cache_creation_input_tokens: 0,
-                    cache_read_input_tokens: 0,
-                },
-                request_id: None,
-            },
-            &mut out,
-        )
-        .expect("response conversion should succeed");
+    
 
-        assert!(matches!(
-            &events[0],
-            AssistantEvent::ToolUse { name, input, .. }
-                if name == "read_file" && input == "{}"
-        ));
-    }
+    
 
-    #[test]
-    fn response_to_events_preserves_non_empty_json_input_outside_streaming() {
-        let mut out = Vec::new();
-        let events = response_to_events(
-            MessageResponse {
-                id: "msg-2".to_string(),
-                kind: "message".to_string(),
-                model: "claude-opus-4-6".to_string(),
-                role: "assistant".to_string(),
-                content: vec![OutputContentBlock::ToolUse {
-                    id: "tool-2".to_string(),
-                    name: "read_file".to_string(),
-                    input: json!({ "path": "rust/Cargo.toml" }),
-                }],
-                stop_reason: Some("tool_use".to_string()),
-                stop_sequence: None,
-                usage: Usage {
-                    input_tokens: 1,
-                    output_tokens: 1,
-                    cache_creation_input_tokens: 0,
-                    cache_read_input_tokens: 0,
-                },
-                request_id: None,
-            },
-            &mut out,
-        )
-        .expect("response conversion should succeed");
+    
 
-        assert!(matches!(
-            &events[0],
-            AssistantEvent::ToolUse { name, input, .. }
-                if name == "read_file" && input == "{\"path\":\"rust/Cargo.toml\"}"
-        ));
-    }
+    
 
-    #[test]
-    fn response_to_events_renders_collapsed_thinking_summary() {
-        let mut out = Vec::new();
-        let events = response_to_events(
-            MessageResponse {
-                id: "msg-3".to_string(),
-                kind: "message".to_string(),
-                model: "claude-opus-4-6".to_string(),
-                role: "assistant".to_string(),
-                content: vec![
-                    OutputContentBlock::Thinking {
-                        thinking: "step 1".to_string(),
-                        signature: Some("sig_123".to_string()),
-                    },
-                    OutputContentBlock::Text {
-                        text: "Final answer".to_string(),
-                    },
-                ],
-                stop_reason: Some("end_turn".to_string()),
-                stop_sequence: None,
-                usage: Usage {
-                    input_tokens: 1,
-                    output_tokens: 1,
-                    cache_creation_input_tokens: 0,
-                    cache_read_input_tokens: 0,
-                },
-                request_id: None,
-            },
-            &mut out,
-        )
-        .expect("response conversion should succeed");
+    
 
-        assert!(matches!(
-            &events[0],
-            AssistantEvent::TextDelta(text) if text == "Final answer"
-        ));
-        let rendered = String::from_utf8(out).expect("utf8");
-        assert!(rendered.contains("▶ Thinking (6 chars hidden)"));
-        assert!(!rendered.contains("step 1"));
-    }
+    
 
-    #[test]
-    fn build_runtime_plugin_state_merges_plugin_hooks_into_runtime_features() {
-        let config_home = temp_dir();
-        let workspace = temp_dir();
-        let source_root = temp_dir();
-        fs::create_dir_all(&config_home).expect("config home");
-        fs::create_dir_all(&workspace).expect("workspace");
-        fs::create_dir_all(&source_root).expect("source root");
-        write_plugin_fixture(&source_root, "hook-runtime-demo", true, false);
-
-        let mut manager = PluginManager::new(PluginManagerConfig::new(&config_home));
-        manager
-            .install(source_root.to_str().expect("utf8 source path"))
-            .expect("plugin install should succeed");
-        let loader = ConfigLoader::new(&workspace, &config_home);
-        let runtime_config = loader.load().expect("runtime config should load");
-        let state = build_runtime_plugin_state_with_loader(&workspace, &loader, &runtime_config)
-            .expect("plugin state should load");
-        let pre_hooks = state.feature_config.hooks().pre_tool_use();
-        assert_eq!(pre_hooks.len(), 1);
-        assert!(
-            pre_hooks[0].ends_with("hooks/pre.sh"),
-            "expected installed plugin hook path, got {pre_hooks:?}"
-        );
-
-        let _ = fs::remove_dir_all(config_home);
-        let _ = fs::remove_dir_all(workspace);
-        let _ = fs::remove_dir_all(source_root);
-    }
-
-    #[test]
-    #[allow(clippy::too_many_lines)]
-    fn build_runtime_plugin_state_discovers_mcp_tools_and_surfaces_pending_servers() {
-        let config_home = temp_dir();
-        let workspace = temp_dir();
-        fs::create_dir_all(&config_home).expect("config home");
-        fs::create_dir_all(&workspace).expect("workspace");
-        let script_path = workspace.join("fixture-mcp.py");
-        write_mcp_server_fixture(&script_path);
-        fs::write(
-            config_home.join("settings.json"),
-            format!(
-                r#"{{
-                  "mcpServers": {{
-                    "alpha": {{
-                      "command": "python3",
-                      "args": ["{}"]
-                    }},
-                    "broken": {{
-                      "command": "python3",
-                      "args": ["-c", "import sys; sys.exit(0)"]
-                    }}
-                  }}
-                }}"#,
-                script_path.to_string_lossy()
-            ),
-        )
-        .expect("write mcp settings");
-
-        let loader = ConfigLoader::new(&workspace, &config_home);
-        let runtime_config = loader.load().expect("runtime config should load");
-        let state = build_runtime_plugin_state_with_loader(&workspace, &loader, &runtime_config)
-            .expect("runtime plugin state should load");
-
-        let allowed = state
-            .tool_registry
-            .normalize_allowed_tools(&["mcp__alpha__echo".to_string(), "MCPTool".to_string()])
-            .expect("mcp tools should be allow-listable")
-            .expect("allow-list should exist");
-        assert!(allowed.contains("mcp__alpha__echo"));
-        assert!(allowed.contains("MCPTool"));
-
-        let mut executor = CliToolExecutor::new(
-            None,
-            false,
-            state.tool_registry.clone(),
-            state.mcp_state.clone(),
-        );
-
-        let tool_output = executor
-            .execute("mcp__alpha__echo", r#"{"text":"hello"}"#)
-            .expect("discovered mcp tool should execute");
-        let tool_json: serde_json::Value =
-            serde_json::from_str(&tool_output).expect("tool output should be json");
-        assert_eq!(tool_json["structuredContent"]["echoed"], "hello");
-
-        let wrapped_output = executor
-            .execute(
-                "MCPTool",
-                r#"{"qualifiedName":"mcp__alpha__echo","arguments":{"text":"wrapped"}}"#,
-            )
-            .expect("generic mcp wrapper should execute");
-        let wrapped_json: serde_json::Value =
-            serde_json::from_str(&wrapped_output).expect("wrapped output should be json");
-        assert_eq!(wrapped_json["structuredContent"]["echoed"], "wrapped");
-
-        let search_output = executor
-            .execute("ToolSearch", r#"{"query":"alpha echo","max_results":5}"#)
-            .expect("tool search should execute");
-        let search_json: serde_json::Value =
-            serde_json::from_str(&search_output).expect("search output should be json");
-        assert_eq!(search_json["matches"][0], "mcp__alpha__echo");
-        assert_eq!(search_json["pending_mcp_servers"][0], "broken");
-        assert_eq!(
-            search_json["mcp_degraded"]["failed_servers"][0]["server_name"],
-            "broken"
-        );
-        assert_eq!(
-            search_json["mcp_degraded"]["failed_servers"][0]["phase"],
-            "tool_discovery"
-        );
-        assert_eq!(
-            search_json["mcp_degraded"]["available_tools"][0],
-            "mcp__alpha__echo"
-        );
-
-        let listed = executor
-            .execute("ListMcpResourcesTool", r#"{"server":"alpha"}"#)
-            .expect("resources should list");
-        let listed_json: serde_json::Value =
-            serde_json::from_str(&listed).expect("resource output should be json");
-        assert_eq!(listed_json["resources"][0]["uri"], "file://guide.txt");
-
-        let read = executor
-            .execute(
-                "ReadMcpResourceTool",
-                r#"{"server":"alpha","uri":"file://guide.txt"}"#,
-            )
-            .expect("resource should read");
-        let read_json: serde_json::Value =
-            serde_json::from_str(&read).expect("resource read output should be json");
-        assert_eq!(
-            read_json["contents"][0]["text"],
-            "contents for file://guide.txt"
-        );
-
-        if let Some(mcp_state) = state.mcp_state {
-            mcp_state
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner)
-                .shutdown()
-                .expect("mcp shutdown should succeed");
-        }
-
-        let _ = fs::remove_dir_all(config_home);
-        let _ = fs::remove_dir_all(workspace);
-    }
-
-    #[test]
-    fn build_runtime_plugin_state_surfaces_unsupported_mcp_servers_structurally() {
-        let config_home = temp_dir();
-        let workspace = temp_dir();
-        fs::create_dir_all(&config_home).expect("config home");
-        fs::create_dir_all(&workspace).expect("workspace");
-        fs::write(
-            config_home.join("settings.json"),
-            r#"{
-              "mcpServers": {
-                "remote": {
-                  "url": "https://example.test/mcp"
-                }
-              }
-            }"#,
-        )
-        .expect("write mcp settings");
-
-        let loader = ConfigLoader::new(&workspace, &config_home);
-        let runtime_config = loader.load().expect("runtime config should load");
-        let state = build_runtime_plugin_state_with_loader(&workspace, &loader, &runtime_config)
-            .expect("runtime plugin state should load");
-        let mut executor = CliToolExecutor::new(
-            None,
-            false,
-            state.tool_registry.clone(),
-            state.mcp_state.clone(),
-        );
-
-        let search_output = executor
-            .execute("ToolSearch", r#"{"query":"remote","max_results":5}"#)
-            .expect("tool search should execute");
-        let search_json: serde_json::Value =
-            serde_json::from_str(&search_output).expect("search output should be json");
-        assert_eq!(search_json["pending_mcp_servers"][0], "remote");
-        assert_eq!(
-            search_json["mcp_degraded"]["failed_servers"][0]["server_name"],
-            "remote"
-        );
-        assert_eq!(
-            search_json["mcp_degraded"]["failed_servers"][0]["phase"],
-            "server_registration"
-        );
-        assert_eq!(
-            search_json["mcp_degraded"]["failed_servers"][0]["error"]["context"]["transport"],
-            "http"
-        );
-
-        let _ = fs::remove_dir_all(config_home);
-        let _ = fs::remove_dir_all(workspace);
-    }
-
-    #[test]
-    fn build_runtime_runs_plugin_lifecycle_init_and_shutdown() {
-        // Serialize access to process-wide env vars so parallel tests that
-        // set/remove ANTHROPIC_API_KEY do not race with this test.
-        let _guard = env_lock();
-        let config_home = temp_dir();
-        // Inject a dummy API key so runtime construction succeeds without real credentials.
-        // This test only exercises plugin lifecycle (init/shutdown), never calls the API.
-        std::env::set_var("ANTHROPIC_API_KEY", "test-dummy-key-for-plugin-lifecycle");
-        let workspace = temp_dir();
-        let source_root = temp_dir();
-        fs::create_dir_all(&config_home).expect("config home");
-        fs::create_dir_all(&workspace).expect("workspace");
-        fs::create_dir_all(&source_root).expect("source root");
-        write_plugin_fixture(&source_root, "lifecycle-runtime-demo", false, true);
-
-        let mut manager = PluginManager::new(PluginManagerConfig::new(&config_home));
-        let install = manager
-            .install(source_root.to_str().expect("utf8 source path"))
-            .expect("plugin install should succeed");
-        let log_path = install.install_path.join("lifecycle.log");
-        let loader = ConfigLoader::new(&workspace, &config_home);
-        let runtime_config = loader.load().expect("runtime config should load");
-        let runtime_plugin_state =
-            build_runtime_plugin_state_with_loader(&workspace, &loader, &runtime_config)
-                .expect("plugin state should load");
-        let mut runtime = build_runtime_with_plugin_state(
-            Session::new(),
-            "runtime-plugin-lifecycle",
-            DEFAULT_MODEL.to_string(),
-            vec!["test system prompt".to_string()],
-            true,
-            false,
-            None,
-            PermissionMode::DangerFullAccess,
-            None,
-            runtime_plugin_state,
-        )
-        .expect("runtime should build");
-
-        assert_eq!(
-            fs::read_to_string(&log_path).expect("init log should exist"),
-            "init\n"
-        );
-
-        runtime
-            .shutdown_plugins()
-            .expect("plugin shutdown should succeed");
-
-        assert_eq!(
-            fs::read_to_string(&log_path).expect("shutdown log should exist"),
-            "init\nshutdown\n"
-        );
-
-        let _ = fs::remove_dir_all(config_home);
-        let _ = fs::remove_dir_all(workspace);
-        let _ = fs::remove_dir_all(source_root);
-        std::env::remove_var("ANTHROPIC_API_KEY");
-    }
+    
 
     #[test]
     fn rejects_invalid_reasoning_effort_value() {
