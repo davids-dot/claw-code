@@ -9,6 +9,30 @@ use crate::args::*;
 use crate::model::*;
 use crate::*;
 
+#[derive(Debug, Clone)]
+pub(crate) struct StatusContext {
+    pub(crate) cwd: PathBuf,
+    pub(crate) session_path: Option<PathBuf>,
+    pub(crate) loaded_config_files: usize,
+    pub(crate) discovered_config_files: usize,
+    pub(crate) memory_file_count: usize,
+    pub(crate) project_root: Option<PathBuf>,
+    pub(crate) git_branch: Option<String>,
+    pub(crate) git_summary: GitWorkspaceSummary,
+    pub(crate) session_lifecycle: SessionLifecycleSummary,
+    pub(crate) sandbox_status: runtime::SandboxStatus,
+    pub(crate) config_load_error: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct StatusUsage {
+    pub(crate) message_count: usize,
+    pub(crate) turns: u32,
+    pub(crate) latest: TokenUsage,
+    pub(crate) cumulative: TokenUsage,
+    pub(crate) estimated_tokens: usize,
+}
+
 pub(crate) fn parse_git_status_metadata(status: Option<&str>) -> (Option<PathBuf>, Option<String>) {
     parse_git_status_metadata_for(
         &env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
@@ -198,7 +222,7 @@ pub(crate) fn status_json_value(
     let model_source = provenance.map(|p| p.source.as_str());
     let model_raw = provenance.and_then(|p| p.raw.clone());
     let allowed_tool_entries = allowed_tools.map(|tools| tools.iter().cloned().collect::<Vec<_>>());
-    json!({
+   serde_json::json!({
         "kind": "status",
         "status": if degraded { "degraded" } else { "ok" },
         "config_load_error": context.config_load_error,
@@ -235,6 +259,7 @@ pub(crate) fn status_json_value(
                 // .claw/sessions/. Extract the stem (drop the .jsonl extension).
                 path.file_stem().map(|n| n.to_string_lossy().into_owned())
             }),
+            "session_lifecycle": context.session_lifecycle.json_value(),
             "loaded_config_files": context.loaded_config_files,
             "discovered_config_files": context.discovered_config_files,
             "memory_file_count": context.memory_file_count,
@@ -305,120 +330,6 @@ pub(crate) fn status_context(
     })
 }
 
-pub(crate) fn classify_session_lifecycle_for(workspace: &Path) -> SessionLifecycleSummary {
-    classify_session_lifecycle_from_panes(workspace, discover_tmux_panes())
-}
-
-pub(crate) fn classify_session_lifecycle_from_panes(
-    workspace: &Path,
-    panes: Vec<TmuxPaneSnapshot>,
-) -> SessionLifecycleSummary {
-    let workspace_dirty = git_worktree_is_dirty(workspace);
-    let mut idle_shell = None;
-    for pane in panes {
-        if !pane_path_matches_workspace(&pane.current_path, workspace) {
-            continue;
-        }
-        if is_idle_shell_command(&pane.current_command) {
-            idle_shell.get_or_insert(pane);
-        } else {
-            return SessionLifecycleSummary {
-                kind: SessionLifecycleKind::RunningProcess,
-                pane_id: Some(pane.pane_id),
-                pane_command: Some(pane.current_command),
-                pane_path: Some(pane.current_path),
-                workspace_dirty,
-                abandoned: false,
-            };
-        }
-    }
-
-    if let Some(pane) = idle_shell {
-        SessionLifecycleSummary {
-            kind: SessionLifecycleKind::IdleShell,
-            pane_id: Some(pane.pane_id),
-            pane_command: Some(pane.current_command),
-            pane_path: Some(pane.current_path),
-            workspace_dirty,
-            abandoned: workspace_dirty,
-        }
-    } else {
-        SessionLifecycleSummary {
-            kind: SessionLifecycleKind::SavedOnly,
-            pane_id: None,
-            pane_command: None,
-            pane_path: None,
-            workspace_dirty,
-            abandoned: workspace_dirty,
-        }
-    }
-}
-
-pub(crate) fn discover_tmux_panes() -> Vec<TmuxPaneSnapshot> {
-    let output = Command::new("tmux")
-        .args([
-            "list-panes",
-            "-a",
-            "-F",
-            "#{pane_id}\t#{pane_current_command}\t#{pane_current_path}",
-        ])
-        .output();
-    let Ok(output) = output else {
-        return Vec::new();
-    };
-    if !output.status.success() {
-        return Vec::new();
-    }
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    parse_tmux_pane_snapshots(&stdout)
-}
-
-pub(crate) fn parse_tmux_pane_snapshots(output: &str) -> Vec<TmuxPaneSnapshot> {
-    output
-        .lines()
-        .filter_map(|line| {
-            let mut fields = line.splitn(3, '\t');
-            let pane_id = fields.next()?.trim();
-            let current_command = fields.next()?.trim();
-            let current_path = fields.next()?.trim();
-            if pane_id.is_empty() || current_path.is_empty() {
-                return None;
-            }
-            Some(TmuxPaneSnapshot {
-                pane_id: pane_id.to_string(),
-                current_command: current_command.to_string(),
-                current_path: PathBuf::from(current_path),
-            })
-        })
-        .collect()
-}
-
-pub(crate) fn pane_path_matches_workspace(pane_path: &Path, workspace: &Path) -> bool {
-    let pane_path = fs::canonicalize(pane_path).unwrap_or_else(|_| pane_path.to_path_buf());
-    let workspace = fs::canonicalize(workspace).unwrap_or_else(|_| workspace.to_path_buf());
-    pane_path == workspace || pane_path.starts_with(&workspace)
-}
-
-pub(crate) fn is_idle_shell_command(command: &str) -> bool {
-    let command = command.rsplit('/').next().unwrap_or(command);
-    matches!(
-        command,
-        "bash" | "zsh" | "sh" | "fish" | "nu" | "pwsh" | "powershell" | "cmd"
-    )
-}
-
-pub(crate) fn git_worktree_is_dirty(workspace: &Path) -> bool {
-    let output = Command::new("git")
-        .arg("-C")
-        .arg(workspace)
-        .args(["status", "--porcelain"])
-        .output();
-    output
-        .ok()
-        .filter(|output| output.status.success())
-        .is_some_and(|output| !output.stdout.is_empty())
-}
-
 pub(crate) fn format_status_report(
     model: &str,
     usage: StatusUsage,
@@ -486,6 +397,7 @@ pub(crate) fn format_status_report(
   Unstaged         {}
   Untracked        {}
   Session          {}
+  Lifecycle        {}
   Config files     loaded {}/{}
   Memory files     {}
   Suggested flow   /status → /diff → /commit",
@@ -504,6 +416,7 @@ pub(crate) fn format_status_report(
                 || "live-repl".to_string(),
                 |path| path.display().to_string()
             ),
+            context.session_lifecycle.signal(),
             context.loaded_config_files,
             context.discovered_config_files,
             context.memory_file_count,
@@ -599,7 +512,7 @@ pub(crate) fn print_sandbox_status_snapshot(
 }
 
 pub(crate) fn sandbox_json_value(status: &runtime::SandboxStatus) -> serde_json::Value {
-    json!({
+   serde_json::json!({
         "kind": "sandbox",
         "enabled": status.enabled,
         "active": status.active,

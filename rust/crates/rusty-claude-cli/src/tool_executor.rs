@@ -11,7 +11,8 @@ use runtime::{
 use tools::GlobalToolRegistry;
 
 use crate::constants::*;
-use crate::render::{format_tool_result, TerminalRenderer};
+use crate::format_tool_result;
+use crate::render::TerminalRenderer;
 use crate::RuntimeMcpState;
 
 #[derive(Deserialize)]

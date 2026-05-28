@@ -13,10 +13,9 @@ use tools::GlobalToolRegistry;
 
 use crate::build_runtime_plugin_state_with_loader;
 use crate::constants::*;
-use crate::looks_like_slash_command_token;
 use crate::model::*;
-use crate::normalize_permission_mode;
-use crate::resume_command_can_absorb_token;
+use crate::runtime_builder::build_system_prompt;
+use crate::formatting::{render_help_topic, render_version_report, full_help_text};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum CliAction {
@@ -783,7 +782,7 @@ pub(crate) fn parse_direct_slash_cli_action(
                 }),
             }
         }
-        Ok(Some(SlashCommand::Unknown(name))) => Err(format_unknown_direct_slash_command(&name)),
+        Ok(Some(SlashCommand::Unknown(name))) => Err(format_unknown_slash_command_message(&name)),
         Ok(Some(command)) => Err({
             let _ = command;
             format!(
@@ -808,8 +807,8 @@ pub(crate) fn format_unknown_option(option: &str) -> String {
     message
 }
 
-pub(crate) fn format_unknown_direct_slash_command(name: &str) -> String {
-    let mut message = format!("unknown slash command outside the REPL: /{name}");
+pub(crate) fn format_unknown_slash_command_message(name: &str) -> String {
+    let mut message = format!("unknown slash command: /{name}");
     if let Some(suggestions) = render_suggestion_line("Did you mean", &suggest_slash_commands(name))
     {
         message.push('\n');
@@ -819,7 +818,7 @@ pub(crate) fn format_unknown_direct_slash_command(name: &str) -> String {
         message.push('\n');
         message.push_str(note);
     }
-    message.push_str("\nRun `claw --help` for CLI usage, or start `claw` and use /help.");
+    message.push_str("\nRun `claw --help` for CLI usage. Use /help in the REPL.");
     message
 }
 
@@ -1226,3 +1225,381 @@ pub(crate) fn parse_resume_args(args: &[String], output_format: CliOutputFormat)
         output_format,
     })
 }
+
+pub(crate) fn parse_history_count(raw: Option<&str>) -> Result<usize, String> {
+    let Some(raw) = raw else {
+        return Ok(DEFAULT_HISTORY_LIMIT);
+    };
+    let parsed: usize = raw
+        .parse()
+        .map_err(|_| format!("history: invalid count '{raw}'. Expected a positive integer."))?;
+    if parsed == 0 {
+        return Err("history: count must be greater than 0.".to_string());
+    }
+    Ok(parsed)
+}
+
+pub(crate) fn normalize_permission_mode(mode: &str) -> Option<&'static str> {
+    match mode.trim() {
+        "read-only" => Some("read-only"),
+        "workspace-write" => Some("workspace-write"),
+        "danger-full-access" => Some("danger-full-access"),
+        _ => None,
+    }
+}
+
+pub(crate) fn validate_no_args(
+    command_name: &str,
+    args: Option<&str>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    if let Some(args) = args.map(str::trim).filter(|value| !value.is_empty()) {
+        return Err(format!(
+            "{command_name} does not accept arguments. Received: {args}\nUsage: {command_name}"
+        )
+        .into());
+    }
+    Ok(())
+}
+
+pub(crate) fn print_help_topic(topic: LocalHelpTopic) {
+    println!("{}", render_help_topic(topic));
+}
+
+pub(crate) fn print_acp_status(
+    output_format: CliOutputFormat,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let message = "ACP/Zed editor integration is not implemented in claw-code yet. `claw acp serve` is only a discoverability alias today; it does not launch a daemon or Zed-specific protocol endpoint. Use the normal terminal surfaces for now and track ROADMAP #76 for real ACP support.";
+    match output_format {
+        CliOutputFormat::Text => {
+            println!(
+                "ACP / Zed\n  Status           discoverability only\n  Launch           `claw acp serve` / `claw --acp` / `claw -acp` report status only; no editor daemon is available yet\n  Today            use `claw prompt`, the REPL, or `claw doctor` for local verification\n  Tracking         ROADMAP #76\n  Message          {message}"
+            );
+        }
+        CliOutputFormat::Json => {
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&serde_json::json!({
+                    "kind": "acp",
+                    "status": "discoverability_only",
+                    "supported": false,
+                    "serve_alias_only": true,
+                    "message": message,
+                    "launch_command": serde_json::Value::Null,
+                    "aliases": ["acp", "--acp", "-acp"],
+                    "discoverability_tracking": "ROADMAP #64a",
+                    "tracking": "ROADMAP #76",
+                    "recommended_workflows": [
+                        "claw prompt TEXT",
+                        "claw",
+                        "claw doctor"
+                    ],
+                }))?
+            );
+        }
+    }
+    Ok(())
+}
+
+pub(crate) fn slash_command_completion_candidates_with_sessions(
+    model: &str,
+    active_session_id: Option<&str>,
+    recent_session_ids: Vec<String>,
+) -> Vec<String> {
+    use std::collections::BTreeSet;
+    let mut completions = BTreeSet::new();
+
+    for spec in commands::slash_command_specs() {
+        if STUB_COMMANDS.contains(&spec.name) {
+            continue;
+        }
+        completions.insert(format!("/{}", spec.name));
+        for alias in spec.aliases {
+            if !STUB_COMMANDS.contains(alias) {
+                completions.insert(format!("/{alias}"));
+            }
+        }
+    }
+
+    for candidate in [
+        "/bughunter ",
+        "/clear --confirm",
+        "/config ",
+        "/config env",
+        "/config hooks",
+        "/config model",
+        "/config plugins",
+        "/mcp ",
+        "/mcp list",
+        "/mcp show ",
+        "/export ",
+        "/issue ",
+        "/model ",
+        "/model opus",
+        "/model sonnet",
+        "/model haiku",
+        "/permissions ",
+        "/permissions read-only",
+        "/permissions workspace-write",
+        "/permissions danger-full-access",
+        "/plugin list",
+        "/plugin install ",
+        "/plugin enable ",
+        "/plugin disable ",
+        "/plugin uninstall ",
+        "/plugin update ",
+        "/plugins list",
+        "/pr ",
+        "/resume ",
+        "/session list",
+        "/session switch ",
+        "/session fork ",
+        "/teleport ",
+        "/ultraplan ",
+        "/agents help",
+        "/mcp help",
+        "/skills help",
+    ] {
+        completions.insert(candidate.to_string());
+    }
+
+    if !model.trim().is_empty() {
+        completions.insert(format!("/model {}", resolve_model_alias(model)));
+        completions.insert(format!("/model {model}"));
+    }
+
+    if let Some(active_session_id) = active_session_id.filter(|value| !value.trim().is_empty()) {
+        completions.insert(format!("/resume {active_session_id}"));
+        completions.insert(format!("/session switch {active_session_id}"));
+    }
+
+    for session_id in recent_session_ids
+        .into_iter()
+        .filter(|value| !value.trim().is_empty())
+        .take(10)
+    {
+        completions.insert(format!("/resume {session_id}"));
+        completions.insert(format!("/session switch {session_id}"));
+    }
+
+    completions.into_iter().collect()
+}
+
+pub(crate) fn run_worker_state(output_format: CliOutputFormat) -> Result<(), Box<dyn std::error::Error>> {
+    let cwd = env::current_dir()?;
+    let state_path = cwd.join(".claw").join("worker-state.json");
+    if !state_path.exists() {
+        return Err(format!(
+            "no worker state file found at {path}\n  Hint: worker state is written by the interactive REPL or a non-interactive prompt.\n  Run:   claw               # start the REPL (writes state on first turn)\n  Or:    claw prompt <text> # run one non-interactive turn\n  Then rerun: claw state [--output-format json]",
+            path = state_path.display()
+        )
+        .into());
+    }
+    let raw = std::fs::read_to_string(&state_path)?;
+    match output_format {
+        CliOutputFormat::Text => println!("{raw}"),
+        CliOutputFormat::Json => {
+            let _: serde_json::Value = serde_json::from_str(&raw)?;
+            println!("{raw}");
+        }
+    }
+    Ok(())
+}
+
+pub(crate) fn resume_command_can_absorb_token(current_command: &str, token: &str) -> bool {
+    matches!(
+        commands::SlashCommand::parse(current_command),
+        Ok(Some(commands::SlashCommand::Export { path: None }))
+    ) && !looks_like_slash_command_token(token)
+}
+
+pub(crate) fn looks_like_slash_command_token(token: &str) -> bool {
+    let trimmed = token.trim_start();
+    let Some(name) = trimmed.strip_prefix('/').and_then(|value| {
+        value
+            .split_whitespace()
+            .next()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+    }) else {
+        return false;
+    };
+
+    commands::slash_command_specs()
+        .iter()
+        .any(|spec| spec.name == name || spec.aliases.contains(&name))
+}
+
+pub(crate) fn dump_manifests(
+    manifests_dir: Option<&Path>,
+    output_format: CliOutputFormat,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let workspace_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    dump_manifests_at_path(&workspace_dir, manifests_dir, output_format)
+}
+
+const DUMP_MANIFESTS_OVERRIDE_HINT: &str =
+    "Hint: set CLAUDE_CODE_UPSTREAM=/path/to/upstream or pass `claw dump-manifests --manifests-dir /path/to/upstream`.";
+
+fn dump_manifests_at_path(
+    workspace_dir: &std::path::Path,
+    manifests_dir: Option<&Path>,
+    output_format: CliOutputFormat,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let paths = if let Some(dir) = manifests_dir {
+        let resolved = dir.canonicalize().unwrap_or_else(|_| dir.to_path_buf());
+        compat_harness::UpstreamPaths::from_repo_root(resolved)
+    } else {
+        let resolved = workspace_dir
+            .canonicalize()
+            .unwrap_or_else(|_| workspace_dir.to_path_buf());
+        compat_harness::UpstreamPaths::from_workspace_dir(&resolved)
+    };
+
+    let source_root = paths.repo_root();
+    if !source_root.exists() {
+        return Err(format!(
+            "Manifest source directory does not exist.\n  looked in: {}\n  {DUMP_MANIFESTS_OVERRIDE_HINT}",
+            source_root.display(),
+        )
+        .into());
+    }
+
+    let required_paths = [
+        ("src/commands.ts", paths.commands_path()),
+        ("src/tools.ts", paths.tools_path()),
+        ("src/entrypoints/cli.tsx", paths.cli_path()),
+    ];
+    let missing = required_paths
+        .iter()
+        .filter_map(|(label, path)| (!path.is_file()).then_some(*label))
+        .collect::<Vec<_>>();
+    if !missing.is_empty() {
+        return Err(format!(
+            "Manifest source files are missing.\n  repo root: {}\n  missing: {}\n  {DUMP_MANIFESTS_OVERRIDE_HINT}",
+            source_root.display(),
+            missing.join(", "),
+        )
+        .into());
+    }
+
+    match compat_harness::extract_manifest(&paths) {
+        Ok(manifest) => {
+            match output_format {
+                CliOutputFormat::Text => {
+                    println!("commands: {}", manifest.commands.entries().len());
+                    println!("tools: {}", manifest.tools.entries().len());
+                    println!("bootstrap phases: {}", manifest.bootstrap.phases().len());
+                }
+                CliOutputFormat::Json => println!(
+                    "{}",
+                    serde_json::to_string_pretty(&serde_json::json!({
+                        "kind": "dump-manifests",
+                        "commands": manifest.commands.entries().len(),
+                        "tools": manifest.tools.entries().len(),
+                        "bootstrap_phases": manifest.bootstrap.phases().len(),
+                    }))?
+                ),
+            }
+            Ok(())
+        }
+        Err(error) => Err(format!("failed to extract manifests: {error}").into()),
+    }
+}
+
+pub(crate) fn print_bootstrap_plan(
+    output_format: CliOutputFormat,
+) -> Result<(), Box<dyn std::error::Error>> {
+    match output_format {
+        CliOutputFormat::Text => {
+            println!("Bootstrap Plan\n  Status           not implemented\n  Message          the bootstrap plan surface is not implemented in this build yet.");
+        }
+        CliOutputFormat::Json => {
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&bootstrap_plan_json_value())?
+            );
+        }
+    }
+    Ok(())
+}
+
+fn bootstrap_plan_json_value() -> serde_json::Value {
+    serde_json::json!({
+        "kind": "bootstrap_plan",
+        "phases": [],
+        "message": "the bootstrap plan surface is not implemented in this build yet.",
+    })
+}
+
+pub(crate) fn print_system_prompt(
+    _cwd: Option<PathBuf>,
+    _date: Option<String>,
+    output_format: CliOutputFormat,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let prompt = build_system_prompt()?;
+    match output_format {
+        CliOutputFormat::Text => {
+            println!("{}", prompt.join("\n\n"));
+        }
+        CliOutputFormat::Json => {
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&serde_json::json!({
+                    "kind": "system_prompt",
+                    "prompt": prompt,
+                }))?
+            );
+        }
+    }
+    Ok(())
+}
+
+pub(crate) fn print_version(output_format: CliOutputFormat) -> Result<(), Box<dyn std::error::Error>> {
+    match output_format {
+        CliOutputFormat::Text => {
+            println!("{}", render_version_report());
+        }
+        CliOutputFormat::Json => {
+            println!("{}", serde_json::to_string_pretty(&version_json_value())?);
+        }
+    }
+    Ok(())
+}
+
+pub(crate) fn version_json_value() -> serde_json::Value {
+    serde_json::json!({
+        "kind": "version",
+        "version": VERSION,
+        "git_sha": GIT_SHA,
+        "build_target": BUILD_TARGET,
+        "build_date": DEFAULT_DATE,
+    })
+}
+
+pub(crate) fn print_help(output_format: CliOutputFormat) -> Result<(), Box<dyn std::error::Error>> {
+    match output_format {
+        CliOutputFormat::Text => {
+            println!("{}", full_help_text());
+        }
+        CliOutputFormat::Json => {
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&serde_json::json!({
+                    "kind": "help",
+                    "text": full_help_text(),
+                }))?
+            );
+        }
+    }
+    Ok(())
+}
+
+pub(crate) fn print_connected_line(model: &str) -> String {
+    let provider = if model.to_lowercase().contains("grok") {
+        "xAI"
+    } else {
+        "Anthropic"
+    };
+    format!("\x1b[2mConnected to {provider} ({model})\x1b[0m")
+}
+

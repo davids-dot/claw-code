@@ -1,6 +1,8 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use crate::args::CliOutputFormat;
+
 const STARTER_CLAW_JSON: &str = concat!(
     "{\n",
     "  \"permissions\": {\n",
@@ -159,6 +161,38 @@ pub(crate) fn initialize_repo(cwd: &Path) -> Result<InitReport, Box<dyn std::err
     Ok(InitReport {
         project_root: cwd.to_path_buf(),
         artifacts,
+    })
+}
+
+pub(crate) fn init_claude_md() -> Result<String, Box<dyn std::error::Error>> {
+    let cwd = std::env::current_dir()?;
+    Ok(initialize_repo(&cwd)?.render())
+}
+
+pub(crate) fn run_init(output_format: CliOutputFormat) -> Result<(), Box<dyn std::error::Error>> {
+    let cwd = std::env::current_dir()?;
+    let report = initialize_repo(&cwd)?;
+    let message = report.render();
+    match output_format {
+        CliOutputFormat::Text => println!("{message}"),
+        CliOutputFormat::Json => println!(
+            "{}",
+            serde_json::to_string_pretty(&init_json_value(&report, &message))?
+        ),
+    }
+    Ok(())
+}
+
+pub(crate) fn init_json_value(report: &InitReport, message: &str) -> serde_json::Value {
+    serde_json::json!({
+        "kind": "init",
+        "project_root": report.project_root.display().to_string(),
+        "created": report.artifacts_with_status(InitStatus::Created),
+        "updated": report.artifacts_with_status(InitStatus::Updated),
+        "skipped": report.artifacts_with_status(InitStatus::Skipped),
+        "artifacts": report.artifact_json_entries(),
+        "next_step": InitReport::NEXT_STEP,
+        "message": message,
     })
 }
 

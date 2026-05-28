@@ -103,7 +103,7 @@ impl DoctorReport {
     pub(crate) fn json_value(&self) -> Value {
         let report = self.render();
         let (ok_count, warn_count, fail_count) = self.counts();
-        json!({
+       serde_json::json!({
             "kind": "doctor",
             "message": report,
             "report": report,
@@ -213,12 +213,12 @@ fn check_auth_health() -> DiagnosticCheck {
             "Suggested action  set ANTHROPIC_API_KEY or ANTHROPIC_AUTH_TOKEN; `claw login` is removed".to_string(),
         ])
         .with_data(Map::from_iter([
-            ("api_key_present".to_string(), json!(api_key_present)),
-            ("auth_token_present".to_string(), json!(auth_token_present)),
-            ("legacy_saved_oauth_present".to_string(), json!(true)),
-            ("legacy_saved_oauth_expires_at".to_string(), json!(token_set.expires_at)),
-            ("legacy_refresh_token_present".to_string(), json!(token_set.refresh_token.is_some())),
-            ("legacy_scopes".to_string(), json!(token_set.scopes)),
+            ("api_key_present".to_string(),serde_json::json!(api_key_present)),
+            ("auth_token_present".to_string(),serde_json::json!(auth_token_present)),
+            ("legacy_saved_oauth_present".to_string(),serde_json::json!(true)),
+            ("legacy_saved_oauth_expires_at".to_string(),serde_json::json!(token_set.expires_at)),
+            ("legacy_refresh_token_present".to_string(),serde_json::json!(token_set.refresh_token.is_some())),
+            ("legacy_scopes".to_string(),serde_json::json!(token_set.scopes)),
         ])),
         Ok(None) => DiagnosticCheck::new(
             "Auth",
@@ -231,12 +231,12 @@ fn check_auth_health() -> DiagnosticCheck {
         )
         .with_details(vec![env_details])
         .with_data(Map::from_iter([
-            ("api_key_present".to_string(), json!(api_key_present)),
-            ("auth_token_present".to_string(), json!(auth_token_present)),
-            ("legacy_saved_oauth_present".to_string(), json!(false)),
+            ("api_key_present".to_string(),serde_json::json!(api_key_present)),
+            ("auth_token_present".to_string(),serde_json::json!(auth_token_present)),
+            ("legacy_saved_oauth_present".to_string(),serde_json::json!(false)),
             ("legacy_saved_oauth_expires_at".to_string(), Value::Null),
-            ("legacy_refresh_token_present".to_string(), json!(false)),
-            ("legacy_scopes".to_string(), json!(Vec::<String>::new())),
+            ("legacy_refresh_token_present".to_string(),serde_json::json!(false)),
+            ("legacy_scopes".to_string(),serde_json::json!(Vec::<String>::new())),
         ])),
         Err(error) => DiagnosticCheck::new(
             "Auth",
@@ -244,13 +244,13 @@ fn check_auth_health() -> DiagnosticCheck {
             format!("failed to inspect legacy saved credentials: {error}"),
         )
         .with_data(Map::from_iter([
-            ("api_key_present".to_string(), json!(api_key_present)),
-            ("auth_token_present".to_string(), json!(auth_token_present)),
+            ("api_key_present".to_string(),serde_json::json!(api_key_present)),
+            ("auth_token_present".to_string(),serde_json::json!(auth_token_present)),
             ("legacy_saved_oauth_present".to_string(), Value::Null),
             ("legacy_saved_oauth_expires_at".to_string(), Value::Null),
             ("legacy_refresh_token_present".to_string(), Value::Null),
             ("legacy_scopes".to_string(), Value::Null),
-            ("legacy_saved_oauth_error".to_string(), json!(error.to_string())),
+            ("legacy_saved_oauth_error".to_string(),serde_json::json!(error.to_string())),
         ])),
     }
 }
@@ -278,22 +278,22 @@ fn check_config_health(
             DiagnosticCheck::new("Config", DiagnosticLevel::Ok, if present_paths.is_empty() { "no config files present; defaults are active" } else { "runtime config loaded successfully" })
                 .with_details(details)
                 .with_data(Map::from_iter([
-                    ("discovered_files".to_string(), json!(present_paths)),
-                    ("discovered_files_count".to_string(), json!(present_paths.len())),
-                    ("loaded_config_files".to_string(), json!(loaded_entries.len())),
-                    ("resolved_model".to_string(), json!(runtime_config.model())),
-                    ("mcp_servers".to_string(), json!(runtime_config.mcp().servers().len())),
+                    ("discovered_files".to_string(),serde_json::json!(present_paths)),
+                    ("discovered_files_count".to_string(),serde_json::json!(present_paths.len())),
+                    ("loaded_config_files".to_string(),serde_json::json!(loaded_entries.len())),
+                    ("resolved_model".to_string(),serde_json::json!(runtime_config.model())),
+                    ("mcp_servers".to_string(),serde_json::json!(runtime_config.mcp().servers().len())),
                 ]))
         }
         Err(error) => DiagnosticCheck::new("Config", DiagnosticLevel::Fail, format!("runtime config failed to load: {error}"))
             .with_details(if discovered_paths.is_empty() { vec!["Discovered files  <none>".to_string()] } else { discovered_paths.iter().map(|p| format!("Discovered file   {p}")).collect() })
             .with_data(Map::from_iter([
-                ("discovered_files".to_string(), json!(discovered_paths)),
-                ("discovered_files_count".to_string(), json!(discovered_paths.len())),
-                ("loaded_config_files".to_string(), json!(0)),
+                ("discovered_files".to_string(),serde_json::json!(discovered_paths)),
+                ("discovered_files_count".to_string(),serde_json::json!(discovered_paths.len())),
+                ("loaded_config_files".to_string(),serde_json::json!(0)),
                 ("resolved_model".to_string(), Value::Null),
                 ("mcp_servers".to_string(), Value::Null),
-                ("load_error".to_string(), json!(error.to_string())),
+                ("load_error".to_string(),serde_json::json!(error.to_string())),
             ])),
     }
 }
@@ -306,9 +306,9 @@ fn check_install_source_health() -> DiagnosticCheck {
             format!("Deprecated crate  `{DEPRECATED_INSTALL_COMMAND}` installs a deprecated stub and does not provide the `claw` binary"),
         ])
         .with_data(Map::from_iter([
-            ("official_repo".to_string(), json!(OFFICIAL_REPO_URL)),
-            ("deprecated_install".to_string(), json!(DEPRECATED_INSTALL_COMMAND)),
-            ("recommended_install".to_string(), json!("build from source or follow the upstream binary instructions in README.md")),
+            ("official_repo".to_string(),serde_json::json!(OFFICIAL_REPO_URL)),
+            ("deprecated_install".to_string(),serde_json::json!(DEPRECATED_INSTALL_COMMAND)),
+            ("recommended_install".to_string(),serde_json::json!("build from source or follow the upstream binary instructions in README.md")),
         ]))
 }
 
@@ -326,15 +326,15 @@ fn check_workspace_health(context: &StatusContext) -> DiagnosticCheck {
         format!("Memory files     {} · config files loaded {}/{}", context.memory_file_count, context.loaded_config_files, context.discovered_config_files),
     ])
     .with_data(Map::from_iter([
-        ("cwd".to_string(), json!(context.cwd.display().to_string())),
-        ("project_root".to_string(), json!(context.project_root.as_ref().map(|p| p.display().to_string()))),
-        ("in_git_repo".to_string(), json!(in_repo)),
-        ("git_branch".to_string(), json!(context.git_branch)),
-        ("git_state".to_string(), json!(context.git_summary.headline())),
-        ("changed_files".to_string(), json!(context.git_summary.changed_files)),
-        ("memory_file_count".to_string(), json!(context.memory_file_count)),
-        ("loaded_config_files".to_string(), json!(context.loaded_config_files)),
-        ("discovered_config_files".to_string(), json!(context.discovered_config_files)),
+        ("cwd".to_string(),serde_json::json!(context.cwd.display().to_string())),
+        ("project_root".to_string(),serde_json::json!(context.project_root.as_ref().map(|p| p.display().to_string()))),
+        ("in_git_repo".to_string(),serde_json::json!(in_repo)),
+        ("git_branch".to_string(),serde_json::json!(context.git_branch)),
+        ("git_state".to_string(),serde_json::json!(context.git_summary.headline())),
+        ("changed_files".to_string(),serde_json::json!(context.git_summary.changed_files)),
+        ("memory_file_count".to_string(),serde_json::json!(context.memory_file_count)),
+        ("loaded_config_files".to_string(),serde_json::json!(context.loaded_config_files)),
+        ("discovered_config_files".to_string(),serde_json::json!(context.discovered_config_files)),
     ]))
 }
 
@@ -356,19 +356,19 @@ fn check_sandbox_health(status: &runtime::SandboxStatus) -> DiagnosticCheck {
     )
     .with_details(details)
     .with_data(Map::from_iter([
-        ("enabled".to_string(), json!(status.enabled)),
-        ("active".to_string(), json!(status.active)),
-        ("supported".to_string(), json!(status.supported)),
-        ("namespace_supported".to_string(), json!(status.namespace_supported)),
-        ("namespace_active".to_string(), json!(status.namespace_active)),
-        ("network_supported".to_string(), json!(status.network_supported)),
-        ("network_active".to_string(), json!(status.network_active)),
-        ("filesystem_mode".to_string(), json!(status.filesystem_mode.as_str())),
-        ("filesystem_active".to_string(), json!(status.filesystem_active)),
-        ("allowed_mounts".to_string(), json!(status.allowed_mounts)),
-        ("in_container".to_string(), json!(status.in_container)),
-        ("container_markers".to_string(), json!(status.container_markers)),
-        ("fallback_reason".to_string(), json!(status.fallback_reason)),
+        ("enabled".to_string(),serde_json::json!(status.enabled)),
+        ("active".to_string(),serde_json::json!(status.active)),
+        ("supported".to_string(),serde_json::json!(status.supported)),
+        ("namespace_supported".to_string(),serde_json::json!(status.namespace_supported)),
+        ("namespace_active".to_string(),serde_json::json!(status.namespace_active)),
+        ("network_supported".to_string(),serde_json::json!(status.network_supported)),
+        ("network_active".to_string(),serde_json::json!(status.network_active)),
+        ("filesystem_mode".to_string(),serde_json::json!(status.filesystem_mode.as_str())),
+        ("filesystem_active".to_string(),serde_json::json!(status.filesystem_active)),
+        ("allowed_mounts".to_string(),serde_json::json!(status.allowed_mounts)),
+        ("in_container".to_string(),serde_json::json!(status.in_container)),
+        ("container_markers".to_string(),serde_json::json!(status.container_markers)),
+        ("fallback_reason".to_string(),serde_json::json!(status.fallback_reason)),
     ]))
 }
 
@@ -387,12 +387,12 @@ fn check_system_health(cwd: &Path, config: Option<&runtime::RuntimeConfig>) -> D
     DiagnosticCheck::new("System", DiagnosticLevel::Ok, "captured local runtime metadata")
         .with_details(details)
         .with_data(Map::from_iter([
-            ("os".to_string(), json!(env::consts::OS)),
-            ("arch".to_string(), json!(env::consts::ARCH)),
-            ("working_dir".to_string(), json!(cwd.display().to_string())),
-            ("version".to_string(), json!(VERSION)),
-            ("build_target".to_string(), json!(BUILD_TARGET)),
-            ("git_sha".to_string(), json!(GIT_SHA)),
-            ("default_model".to_string(), json!(default_model)),
+            ("os".to_string(),serde_json::json!(env::consts::OS)),
+            ("arch".to_string(),serde_json::json!(env::consts::ARCH)),
+            ("working_dir".to_string(),serde_json::json!(cwd.display().to_string())),
+            ("version".to_string(),serde_json::json!(VERSION)),
+            ("build_target".to_string(),serde_json::json!(BUILD_TARGET)),
+            ("git_sha".to_string(),serde_json::json!(GIT_SHA)),
+            ("default_model".to_string(),serde_json::json!(default_model)),
         ]))
 }

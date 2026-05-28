@@ -53,7 +53,7 @@ mod tests {
             PluginToolDefinition {
                 name: "plugin_echo".to_string(),
                 description: Some("Echo plugin payload".to_string()),
-                input_schema: json!({
+                input_schema:serde_json::json!({
                     "type": "object",
                     "properties": {
                         "message": { "type": "string" }
@@ -3492,7 +3492,7 @@ UU conflicted.rs",
             .map(|index| format!("line {index:03}"))
             .collect::<Vec<_>>()
             .join("\n");
-        let output = json!({
+        let output =serde_json::json!({
             "file": {
                 "filePath": "src/main.rs",
                 "content": content,
@@ -3518,7 +3518,7 @@ UU conflicted.rs",
             .map(|index| format!("stdout {index:03}"))
             .collect::<Vec<_>>()
             .join("\n");
-        let output = json!({
+        let output =serde_json::json!({
             "stdout": stdout,
             "stderr": "",
             "returnCodeInterpretation": "completed successfully"
@@ -3539,7 +3539,7 @@ UU conflicted.rs",
         let items = (0..120)
             .map(|index| format!("payload {index:03}"))
             .collect::<Vec<_>>();
-        let output = json!({
+        let output =serde_json::json!({
             "summary": "plugin payload",
             "items": items,
         })
@@ -3671,7 +3671,7 @@ UU conflicted.rs",
             OutputContentBlock::ToolUse {
                 id: "tool-1".to_string(),
                 name: "read_file".to_string(),
-                input: json!({}),
+                input:serde_json::json!({}),
             },
             &mut out,
             &mut events,
@@ -3700,7 +3700,7 @@ UU conflicted.rs",
                 content: vec![OutputContentBlock::ToolUse {
                     id: "tool-1".to_string(),
                     name: "read_file".to_string(),
-                    input: json!({}),
+                    input:serde_json::json!({}),
                 }],
                 stop_reason: Some("tool_use".to_string()),
                 stop_sequence: None,
@@ -3735,7 +3735,7 @@ UU conflicted.rs",
                 content: vec![OutputContentBlock::ToolUse {
                     id: "tool-2".to_string(),
                     name: "read_file".to_string(),
-                    input: json!({ "path": "rust/Cargo.toml" }),
+                    input:serde_json::json!({ "path": "rust/Cargo.toml" }),
                 }],
                 stop_reason: Some("tool_use".to_string()),
                 stop_sequence: None,

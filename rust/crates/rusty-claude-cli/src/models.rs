@@ -53,7 +53,7 @@ impl SessionLifecycleSummary {
     }
 
     pub(crate) fn json_value(&self) -> serde_json::Value {
-        json!({
+       serde_json::json!({
             "kind": self.kind.as_str(),
             "pane_id": self.pane_id,
             "pane_command": self.pane_command,
@@ -130,8 +130,4 @@ pub(crate) struct ManagedSessionSummary {
     pub(crate) lifecycle: SessionLifecycleSummary,
 }
 
-#[derive(Debug, Clone)]
-pub(crate) struct PromptHistoryEntry {
-    pub(crate) timestamp_ms: u64,
-    pub(crate) text: String,
-}
+

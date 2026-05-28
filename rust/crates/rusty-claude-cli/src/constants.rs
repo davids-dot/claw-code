@@ -43,6 +43,7 @@ pub(crate) const CLI_OPTION_SUGGESTIONS: &[&str] = &[
     "-p",
 ];
 
+pub(crate) const DEFAULT_HISTORY_LIMIT: usize = 20;
 pub(crate) type AllowedToolSet = BTreeSet<String>;
 
 pub(crate) const STUB_COMMANDS: &[&str] = &[

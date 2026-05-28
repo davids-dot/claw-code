@@ -31,45 +31,45 @@
 
 ## 6. Create args.rs — extract all argument parsing
 
-- [ ] 6.1 Create `src/args.rs` with CliAction enum, CliOutputFormat, LocalHelpTopic, `parse_args`, all parse_* helpers, format_unknown_* functions, suggest_*/levenshtein helpers, normalize_* tools, permission_mode helpers, provider_label, filter_tool_specs (main.rs lines 506-1828)
-- [ ] 6.2 Add `mod args;` to `main.rs` and re-export
-- [ ] 6.3 Run `cargo build` and `cargo test` — must pass
+- [x] 6.1 Create `src/args.rs` with CliAction enum, CliOutputFormat, LocalHelpTopic, `parse_args`, all parse_* helpers, format_unknown_* functions, suggest_*/levenshtein helpers, normalize_* tools, permission_mode helpers, provider_label, filter_tool_specs (main.rs lines 506-1828)
+- [x] 6.2 Add `mod args;` to `main.rs` and re-export
+- [x] 6.3 Run `cargo build` and `cargo test` — must pass
 
 ## 7. Create session.rs — extract session management
 
-- [ ] 7.1 Create `src/session.rs` with SessionHandle, ManagedSessionSummary, all session CRUD functions: `sessions_dir`, `current_session_store`, `new_cli_session`, `create_managed_session_handle`, `resolve_session_reference`, `list_managed_sessions`, `latest_managed_session`, `load_session_reference`, `delete_managed_session`, `confirm_session_deletion`, `render_session_list`, `format_session_modified_age`, `write_session_clear_backup`, `session_clear_backup_path` (main.rs lines 3678-3692, 5257-5427)
-- [ ] 7.2 Add `mod session;` to `main.rs` and re-export
-- [ ] 7.3 Run `cargo build` and `cargo test` — must pass
+- [x] 7.1 Create `src/session.rs` with SessionHandle, ManagedSessionSummary, all session CRUD functions: `sessions_dir`, `current_session_store`, `new_cli_session`, `create_managed_session_handle`, `resolve_session_reference`, `list_managed_sessions`, `latest_managed_session`, `load_session_reference`, `delete_managed_session`, `confirm_session_deletion`, `render_session_list`, `format_session_modified_age`, `write_session_clear_backup`, `session_clear_backup_path` (main.rs lines 3678-3692, 5257-5427)
+- [x] 7.2 Add `mod session;` to `main.rs` and re-export
+- [x] 7.3 Run `cargo build` and `cargo test` — must pass
 
 ## 8. Create status.rs — extract status snapshot and git parsing
 
-- [ ] 8.1 Create `src/status.rs` with StatusContext, StatusUsage, GitWorkspaceSummary, `print_status_snapshot`, `status_json_value`, `status_context`, `format_status_report`, `format_sandbox_report`, `print_sandbox_status_snapshot`, `sandbox_json_value`, and all git parsing helpers (main.rs lines 2842-3200, 5462-5839)
-- [ ] 8.2 Add `mod status;` to `main.rs` and re-export
-- [ ] 8.3 Run `cargo build` and `cargo test` — must pass
+- [x] 8.1 Create `src/status.rs` with StatusContext, StatusUsage, GitWorkspaceSummary, `print_status_snapshot`, `status_json_value`, `status_context`, `format_status_report`, `format_sandbox_report`, `print_sandbox_status_snapshot`, `sandbox_json_value`, and all git parsing helpers (main.rs lines 2842-3200, 5462-5839)
+- [x] 8.2 Add `mod status;` to `main.rs` and re-export
+- [x] 8.3 Run `cargo build` and `cargo test` — must pass
 
 ## 9. Create formatting.rs — extract tool result formatting and help text
 
-- [ ] 9.1 Create `src/formatting.rs` with all format_tool_* functions, push_output_block, response_to_events, push_prompt_cache_record, prompt_cache_record_to_runtime_event, final_assistant_text, collect_tool_uses/results/cache_events, short_tool_id, extract_tool_path, first_visible_line, truncate_* helpers, and full help text functions (main.rs lines 8184-8730, 8923-9122)
-- [ ] 9.2 Add `mod formatting;` to `main.rs` and re-export
-- [ ] 9.3 Run `cargo build` and `cargo test` — must pass
+- [x] 9.1 Create `src/formatting.rs` with all format_tool_* functions, push_output_block, response_to_events, push_prompt_cache_record, prompt_cache_record_to_runtime_event, final_assistant_text, collect_tool_uses/results/cache_events, short_tool_id, extract_tool_path, first_visible_line, truncate_* helpers, and full help text functions (main.rs lines 8184-8730, 8923-9122)
+- [x] 9.2 Add `mod formatting;` to `main.rs` and re-export
+- [x] 9.3 Run `cargo build` and `cargo test` — must pass
 
 ## 10. Create config.rs — extract config and memory reporting
 
-- [ ] 10.1 Create `src/config.rs` with `render_config_report`, `render_config_json`, `render_memory_report`, `render_memory_json` (main.rs lines 5962-6143)
-- [ ] 10.2 Add `mod config;` to `main.rs` and re-export
-- [ ] 10.3 Run `cargo build` and `cargo test` — must pass
+- [x] 10.1 Create `src/config.rs` with `render_config_report`, `render_config_json`, `render_memory_report`, `render_memory_json` (main.rs lines 5962-6143)
+- [x] 10.2 Add `mod config;` to `main.rs` and re-export
+- [x] 10.3 Run `cargo build` and `cargo test` — must pass
 
 ## 11. Create diff.rs — extract git diff reporting
 
-- [ ] 11.1 Create `src/diff.rs` with `render_diff_report`, `render_diff_report_for`, `render_diff_json_for`, `run_git_diff_command_in` (main.rs lines 6189-6270)
-- [ ] 11.2 Add `mod diff;` to `main.rs` and re-export
-- [ ] 11.3 Run `cargo build` and `cargo test` — must pass
+- [x] 11.1 Create `src/diff.rs` with `render_diff_report`, `render_diff_report_for`, `render_diff_json_for`, `run_git_diff_command_in` (main.rs lines 6189-6270)
+- [x] 11.2 Add `mod diff;` to `main.rs` and re-export
+- [x] 11.3 Run `cargo build` and `cargo test` — must pass
 
 ## 12. Create export.rs — extract session export
 
-- [ ] 12.1 Create `src/export.rs` with `run_export`, `render_export_text`, `render_session_markdown`, `default_export_filename`, `resolve_export_path`, `summarize_tool_payload_for_markdown` (main.rs lines 6646-6914)
-- [ ] 12.2 Add `mod export;` to `main.rs` and re-export
-- [ ] 12.3 Run `cargo build` and `cargo test` — must pass
+- [x] 12.1 Create `src/export.rs` with `run_export`, `render_export_text`, `render_session_markdown`, `default_export_filename`, `resolve_export_path`, `summarize_tool_payload_for_markdown` (main.rs lines 6646-6914)
+- [x] 12.2 Add `mod export;` to `main.rs` and re-export
+- [x] 12.3 Run `cargo build` and `cargo test` — must pass
 
 ## 13. Create api_client.rs — extract AnthropicRuntimeClient
 
@@ -85,16 +85,16 @@
 
 ## 15. Create runtime_builder.rs — extract runtime construction
 
-- [ ] 15.1 Create `src/runtime_builder.rs` with RuntimePluginState, RuntimeMcpState, BuiltRuntime struct+impl+Deref+DerefMut+Drop, HookAbortMonitor, all `build_runtime*` functions, `build_plugin_manager`, `resolve_plugin_path`, `runtime_hook_config_from_plugin_hooks`, `build_system_prompt`, `build_runtime_mcp_state`, `mcp_runtime_tool_definition`, `mcp_wrapper_tool_definitions`, `permission_mode_for_mcp_tool`, `mcp_annotation_flag` (main.rs lines 3710-4180, 6924-6995, 7329-7450, 4017-4125)
-- [ ] 15.2 Add `mod runtime_builder;` to `main.rs` and re-export
-- [ ] 15.3 Run `cargo build` and `cargo test` — must pass
+- [x] 15.1 Create `src/runtime_builder.rs` with RuntimePluginState, RuntimeMcpState, BuiltRuntime struct+impl+Deref+DerefMut+Drop, HookAbortMonitor, all `build_runtime*` functions, `build_plugin_manager`, `resolve_plugin_path`, `runtime_hook_config_from_plugin_hooks`, `build_system_prompt`, `build_runtime_mcp_state`, `mcp_runtime_tool_definition`, `mcp_wrapper_tool_definitions`, `permission_mode_for_mcp_tool`, `mcp_annotation_flag` (main.rs lines 3710-4180, 6924-6995, 7329-7450, 4017-4125)
+- [x] 15.2 Add `mod runtime_builder;` to `main.rs` and re-export
+- [x] 15.3 Run `cargo build` and `cargo test` — must pass
 
 ## 16. Create live_cli.rs — extract LiveCli core and REPL loop
 
-- [ ] 16.1 Create `src/live_cli.rs` with LiveCli struct, PromptHistoryEntry, and core impl methods: `new`, `startup_banner`, `prepare_turn_runtime`, `replace_runtime`, `run_turn`, `run_turn_with_output`, `run_prompt_compact/json`, `repl_completion_candidates`, `persist_session`, `record_prompt_history`, `run_internal_prompt_text*`, `reload_runtime_features` (main.rs lines 3694-3710, 4181-4440, 4580-4610, 5240-5260)
-- [ ] 16.2 Extract free functions: `run_repl`, `run_resume_command`, `resume_session`, `detect_broad_cwd`, `enforce_broad_cwd_policy`, `run_stale_base_preflight` (main.rs lines 3520-3675, 3597-3678, 3175-3520, 3609-3610)
-- [ ] 16.3 Add `mod live_cli;` to `main.rs` and re-export
-- [ ] 16.4 Run `cargo build` and `cargo test` — must pass
+- [x] 16.1 Create `src/live_cli.rs` with LiveCli struct, PromptHistoryEntry, and core impl methods: `new`, `startup_banner`, `prepare_turn_runtime`, `replace_runtime`, `run_turn`, `run_turn_with_output`, `run_prompt_compact/json`, `repl_completion_candidates`, `persist_session`, `record_prompt_history`, `run_internal_prompt_text*`, `reload_runtime_features` (main.rs lines 3694-3710, 4181-4440, 4580-4610, 5240-5260)
+- [x] 16.2 Extract free functions: `run_repl`, `run_resume_command`, `resume_session`, `detect_broad_cwd`, `enforce_broad_cwd_policy`, `run_stale_base_preflight` (main.rs lines 3520-3675, 3597-3678, 3175-3520, 3609-3610)
+- [x] 16.3 Add `mod live_cli;` to `main.rs` and re-export
+- [x] 16.4 Run `cargo build` and `cargo test` — must pass
 
 ## 17. Create repl_commands.rs — extract REPL command handlers
 
