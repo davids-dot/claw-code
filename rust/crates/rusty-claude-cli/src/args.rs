@@ -1349,6 +1349,7 @@ pub(crate) fn slash_command_completion_candidates_with_sessions(
         "/plugin update ",
         "/plugins list",
         "/pr ",
+        "/steer ",
         "/resume ",
         "/session list",
         "/session switch ",

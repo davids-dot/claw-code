@@ -699,6 +699,13 @@ const SLASH_COMMAND_SPECS: &[SlashCommandSpec] = &[
         resume_supported: false,
     },
     SlashCommandSpec {
+        name: "steer",
+        aliases: &[],
+        summary: "Inject guidance during AI output without interrupting the conversation",
+        argument_hint: Some("<text>"),
+        resume_supported: false,
+    },
+    SlashCommandSpec {
         name: "tokens",
         aliases: &[],
         summary: "Show token count for the current conversation",
@@ -1179,6 +1186,9 @@ pub enum SlashCommand {
     History {
         count: Option<String>,
     },
+    Steer {
+        text: String,
+    },
     Unknown(String),
 }
 
@@ -1222,6 +1232,7 @@ impl SlashCommand {
             Self::Config { .. } => "/config",
             Self::Memory { .. } => "/memory",
             Self::History { .. } => "/history",
+Self::Steer { .. } => "/steer",
             Self::Diff => "/diff",
             Self::Status => "/status",
             Self::Stats => "/stats",
@@ -1488,10 +1499,13 @@ pub fn validate_slash_command_input(
         "tag" => SlashCommand::Tag { label: remainder },
         "output-style" => SlashCommand::OutputStyle { style: remainder },
         "add-dir" => SlashCommand::AddDir { path: remainder },
-        "history" => SlashCommand::History {
-            count: optional_single_arg(command, &args, "[count]")?,
-        },
-        other => SlashCommand::Unknown(other.to_string()),
+"history" => SlashCommand::History {
+count: optional_single_arg(command, &args, "[count]")?,
+},
+"steer" => SlashCommand::Steer {
+text: remainder.unwrap_or_default().to_string(),
+},
+other => SlashCommand::Unknown(other.to_string()),
     }))
 }
 fn validate_no_args(command: &str, args: &[&str]) -> Result<(), SlashCommandParseError> {
@@ -4153,8 +4167,9 @@ pub fn handle_slash_command(
         | SlashCommand::Tag { .. }
         | SlashCommand::OutputStyle { .. }
         | SlashCommand::AddDir { .. }
-        | SlashCommand::History { .. }
-        | SlashCommand::Unknown(_) => None,
+| SlashCommand::History { .. }
+| SlashCommand::Steer { .. }
+| SlashCommand::Unknown(_) => None,
     }
 }
 
@@ -4502,6 +4517,40 @@ mod tests {
     }
 
     #[test]
+    fn parses_steer_command_with_text() {
+        // given
+        let input = "/steer focus on testing";
+
+        // when
+        let parsed = SlashCommand::parse(input);
+
+        // then
+        assert_eq!(
+            parsed,
+            Ok(Some(SlashCommand::Steer {
+                text: "focus on testing".to_string()
+            }))
+        );
+    }
+
+    #[test]
+    fn parses_steer_command_without_text() {
+        // given
+        let input = "/steer";
+
+        // when
+        let parsed = SlashCommand::parse(input);
+
+        // then
+        assert_eq!(
+            parsed,
+            Ok(Some(SlashCommand::Steer {
+                text: String::new()
+            }))
+        );
+    }
+
+    #[test]
     fn parses_history_command_with_numeric_count() {
         // given
         let input = "/history 25";
@@ -4676,6 +4725,7 @@ mod tests {
         assert!(help.contains("/config [env|hooks|model|plugins]"));
         assert!(help.contains("/mcp [list|show <server>|help]"));
         assert!(help.contains("/memory"));
+        assert!(help.contains("/steer <text>"));
         assert!(help.contains("/init"));
         assert!(help.contains("/diff"));
         assert!(help.contains("/version"));
@@ -4691,7 +4741,7 @@ mod tests {
         assert!(help.contains("aliases: /skill"));
         assert!(!help.contains("/login"));
         assert!(!help.contains("/logout"));
-        assert_eq!(slash_command_specs().len(), 139);
+        assert_eq!(slash_command_specs().len(), 140);
         assert!(resume_supported_slash_commands().len() >= 10);
     }
 
