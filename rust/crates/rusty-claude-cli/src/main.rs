@@ -31,6 +31,7 @@ mod render;
 mod tool_executor;
 mod runtime_builder;
 mod repl_commands;
+mod setup_wizard;
 
 pub(crate) use api_client::*;
 pub(crate) use args::*;
