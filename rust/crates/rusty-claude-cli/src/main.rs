@@ -31,6 +31,8 @@ mod render;
 mod tool_executor;
 mod runtime_builder;
 mod repl_commands;
+mod setup_wizard;
+mod steer;
 
 pub(crate) use api_client::*;
 pub(crate) use args::*;
@@ -55,6 +57,8 @@ pub(crate) use runtime_builder::*;
 pub(crate) use render::*;
 pub(crate) use commands::*;
 pub(crate) use runtime::*;
+
+pub(crate) use steer::*;
 
 use std::env;
 use std::fs;

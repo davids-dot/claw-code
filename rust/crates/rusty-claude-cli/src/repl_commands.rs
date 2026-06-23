@@ -126,6 +126,15 @@ impl LiveCli {
                 self.print_prompt_history(count.as_deref());
                 false
             }
+            SlashCommand::Steer { text } => {
+                if text.trim().is_empty() {
+                    eprintln!("Usage: /steer <text>");
+                } else {
+                    steer_push(&self.steer_queue, text.clone());
+                    println!("🧭 Steer queued: {text}");
+                }
+                false
+            }
             SlashCommand::Stats => {
                 let usage = UsageTracker::from_session(self.runtime.session()).cumulative_usage();
                 println!("{}", format_cost_report(usage));
@@ -1154,7 +1163,8 @@ pub(crate) fn run_resume_command(
         | SlashCommand::Ide { .. }
         | SlashCommand::Tag { .. }
         | SlashCommand::OutputStyle { .. }
-        | SlashCommand::AddDir { .. } => Err("unsupported resumed slash command".into()),
+        | SlashCommand::AddDir { .. }
+| SlashCommand::Steer { .. } => Err("unsupported resumed slash command".into()),
     }
 }
 

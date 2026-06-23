@@ -21,6 +21,7 @@ pub(crate) struct LiveCli {
     pub(crate) runtime: BuiltRuntime,
     pub(crate) session: SessionHandle,
     pub(crate) prompt_history: Vec<PromptHistoryEntry>,
+    pub(crate) steer_queue: SteerQueue,
 }
 
 impl LiveCli {
@@ -52,6 +53,7 @@ impl LiveCli {
             runtime,
             session,
             prompt_history: Vec::new(),
+            steer_queue: new_steer_queue(),
         };
         cli.persist_session()?;
         Ok(cli)
@@ -152,16 +154,18 @@ impl LiveCli {
     }
 
     pub(crate) fn run_turn(&mut self, input: &str) -> Result<(), Box<dyn std::error::Error>> {
+        let effective_input = self.build_effective_input(input);
+
         let (mut runtime, hook_abort_monitor) = self.prepare_turn_runtime(true)?;
         let mut spinner = Spinner::new();
         let mut stdout = io::stdout();
         spinner.tick(
-            "🦀 Thinking...",
+            "🦀 Thinking... (type /steer <text> to guide)",
             TerminalRenderer::new().color_theme(),
             &mut stdout,
         )?;
         let mut permission_prompter = CliPermissionPrompter::new(self.permission_mode);
-        let result = runtime.run_turn(input, Some(&mut permission_prompter));
+        let result = runtime.run_turn(&effective_input, Some(&mut permission_prompter));
         hook_abort_monitor.stop();
         match result {
             Ok(summary) => {
@@ -312,6 +316,20 @@ impl LiveCli {
         if let Err(error) = self.runtime.session_mut().push_prompt_entry(prompt) {
             eprintln!("warning: failed to persist prompt history: {error}");
         }
+    }
+
+    /// Build effective input by prepending any queued steer texts.
+    fn build_effective_input(&self, input: &str) -> String {
+        let steer_texts = steer_drain(&self.steer_queue);
+        if steer_texts.is_empty() {
+            return input.to_string();
+        }
+        let steer_block = steer_texts
+            .iter()
+            .map(|t| format!("[steer] {t}"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        format!("{steer_block}\n\n{input}")
     }
 
     pub(crate) fn reload_runtime_features(&mut self) -> Result<(), Box<dyn std::error::Error>> {

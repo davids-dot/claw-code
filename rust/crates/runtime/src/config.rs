@@ -65,6 +65,7 @@ pub struct RuntimeFeatureConfig {
     sandbox: SandboxConfig,
     provider_fallbacks: ProviderFallbackConfig,
     trusted_roots: Vec<String>,
+    provider: RuntimeProviderConfig,
 }
 
 /// Ordered chain of fallback model identifiers used when the primary
@@ -90,6 +91,51 @@ pub struct RuntimePermissionRuleConfig {
     allow: Vec<String>,
     deny: Vec<String>,
     ask: Vec<String>,
+}
+
+/// Stored provider configuration from the setup wizard.
+///
+/// Represents the `provider` section in `~/.claw/settings.json`, used as a
+/// fallback when environment variables are absent (3-tier resolution:
+/// env var > .env file > stored config).
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct RuntimeProviderConfig {
+    kind: Option<String>,
+    api_key: Option<String>,
+    base_url: Option<String>,
+    model: Option<String>,
+}
+
+impl RuntimeProviderConfig {
+    #[must_use]
+    pub fn new(kind: Option<String>, api_key: Option<String>, base_url: Option<String>, model: Option<String>) -> Self {
+        Self {
+            kind,
+            api_key,
+            base_url,
+            model,
+        }
+    }
+
+    #[must_use]
+    pub fn kind(&self) -> Option<&str> {
+        self.kind.as_deref()
+    }
+
+    #[must_use]
+    pub fn api_key(&self) -> Option<&str> {
+        self.api_key.as_deref()
+    }
+
+    #[must_use]
+    pub fn base_url(&self) -> Option<&str> {
+        self.base_url.as_deref()
+    }
+
+    #[must_use]
+    pub fn model(&self) -> Option<&str> {
+        self.model.as_deref()
+    }
 }
 
 /// Collection of configured MCP servers after scope-aware merging.
@@ -315,6 +361,7 @@ impl ConfigLoader {
             sandbox: parse_optional_sandbox_config(&merged_value)?,
             provider_fallbacks: parse_optional_provider_fallbacks(&merged_value)?,
             trusted_roots: parse_optional_trusted_roots(&merged_value)?,
+            provider: parse_optional_provider_config(&merged_value)?,
         };
 
         Ok(RuntimeConfig {
@@ -413,6 +460,15 @@ impl RuntimeConfig {
     #[must_use]
     pub fn trusted_roots(&self) -> &[String] {
         &self.feature_config.trusted_roots
+    }
+
+    #[must_use]
+    pub fn provider(&self) -> Option<&RuntimeProviderConfig> {
+        if self.feature_config.provider.kind.is_some() {
+            Some(&self.feature_config.provider)
+        } else {
+            None
+        }
     }
 }
 
@@ -912,6 +968,25 @@ fn parse_optional_trusted_roots(root: &JsonValue) -> Result<Vec<String>, ConfigE
         optional_string_array(object, "trustedRoots", "merged settings.trustedRoots")?
             .unwrap_or_default(),
     )
+}
+
+fn parse_optional_provider_config(root: &JsonValue) -> Result<RuntimeProviderConfig, ConfigError> {
+    let Some(provider_value) = root.as_object().and_then(|object| object.get("provider")) else {
+        return Ok(RuntimeProviderConfig::default());
+    };
+    let Some(object) = provider_value.as_object() else {
+        return Ok(RuntimeProviderConfig::default());
+    };
+    let kind = optional_string(object, "kind", "provider")?.map(str::to_string);
+    let api_key = optional_string(object, "apiKey", "provider")?.map(str::to_string);
+    let base_url = optional_string(object, "baseUrl", "provider")?.map(str::to_string);
+    let model = optional_string(object, "model", "provider")?.map(str::to_string);
+    Ok(RuntimeProviderConfig {
+        kind,
+        api_key,
+        base_url,
+        model,
+    })
 }
 
 fn parse_filesystem_mode_label(value: &str) -> Result<FilesystemIsolationMode, ConfigError> {
@@ -2118,4 +2193,95 @@ mod tests {
 
         fs::remove_dir_all(root).expect("cleanup temp dir");
     }
+}
+
+
+fn read_settings_root(path: &Path) -> BTreeMap<String, JsonValue> {
+    let content = fs::read_to_string(path).unwrap_or_else(|_| "{}".to_string());
+    if content.trim().is_empty() {
+        return BTreeMap::new();
+    }
+    
+    match JsonValue::parse(&content) {
+        Ok(JsonValue::Object(root)) => root,
+        _ => BTreeMap::new(),
+    }
+}
+
+fn write_settings_root(path: &Path, root: &BTreeMap<String, JsonValue>) -> Result<(), ConfigError> {
+    let json_value = JsonValue::Object(root.clone());
+    let content = json_value.render();
+    
+    fs::write(path, content).map_err(ConfigError::Io)?;
+    Ok(())
+}
+
+/// Save provider settings to the user-level `~/.claw/settings.json`.
+/// Creates the file and directory if they don't exist. Sets file permissions
+/// to `0o600` (owner read/write only) to protect stored API keys.
+pub fn save_user_provider_settings(config: &RuntimeProviderConfig) -> Result<(), ConfigError> {
+    let config_home = default_config_home();
+    fs::create_dir_all(&config_home).map_err(ConfigError::Io)?;
+    let settings_path = config_home.join("settings.json");
+
+    let mut root = read_settings_root(&settings_path);
+
+    let mut provider = BTreeMap::new();
+    
+    if let Some(kind) = &config.kind {
+        provider.insert("kind".to_string(), JsonValue::String(kind.clone()));
+    }
+    
+    if let Some(api_key) = &config.api_key {
+        provider.insert("apiKey".to_string(), JsonValue::String(api_key.clone()));
+    }
+    
+    if let Some(base_url) = &config.base_url {
+        provider.insert("baseUrl".to_string(), JsonValue::String(base_url.clone()));
+    }
+    
+    if let Some(model) = &config.model {
+        provider.insert("model".to_string(), JsonValue::String(model.clone()));
+    }
+
+    if !provider.is_empty() {
+        root.insert("provider".to_string(), JsonValue::Object(provider));
+    }
+
+    write_settings_root(&settings_path, &root)?;
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let perms = std::fs::Permissions::from_mode(0o600);
+        fs::set_permissions(&settings_path, perms).map_err(ConfigError::Io)?;
+    }
+
+    Ok(())
+}
+
+/// Remove the `provider` section from the user-level `~/.claw/settings.json`.
+pub fn clear_user_provider_settings() -> Result<(), ConfigError> {
+    let config_home = default_config_home();
+    let settings_path = config_home.join("settings.json");
+
+    if !settings_path.exists() {
+        return Ok(());
+    }
+
+    let mut root = read_settings_root(&settings_path);
+    root.remove("provider");
+    
+    if root.is_empty() {
+        let _ = fs::remove_file(&settings_path);
+    } else {
+        write_settings_root(&settings_path, &root)?;
+    }
+    
+    Ok(())
+}
+
+pub fn suppress_config_warnings_for_json_mode() {
+    // This function prevents config warnings from interfering with JSON output
+    // Currently a no-op, but reserved for future implementation if needed
 }
