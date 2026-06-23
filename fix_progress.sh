@@ -1,8 +1,0 @@
-sed -i '' 's/^struct InternalPromptProgressState/pub(crate) struct InternalPromptProgressState/g' rust/crates/rusty-claude-cli/src/ui/progress.rs
-sed -i '' 's/^enum InternalPromptProgressEvent/pub(crate) enum InternalPromptProgressEvent/g' rust/crates/rusty-claude-cli/src/ui/progress.rs
-sed -i '' 's/^struct InternalPromptProgressShared/pub(crate) struct InternalPromptProgressShared/g' rust/crates/rusty-claude-cli/src/ui/progress.rs
-sed -i '' 's/^struct InternalPromptProgressReporter/pub(crate) struct InternalPromptProgressReporter/g' rust/crates/rusty-claude-cli/src/ui/progress.rs
-sed -i '' 's/^struct InternalPromptProgressRun/pub(crate) struct InternalPromptProgressRun/g' rust/crates/rusty-claude-cli/src/ui/progress.rs
-sed -i '' 's/^struct CliHookProgressReporter/pub(crate) struct CliHookProgressReporter/g' rust/crates/rusty-claude-cli/src/ui/progress.rs
-sed -ised -i '' 's/^struct InternalPromptProgrplsed -i '' 's/^enum InternalPromptProgressEvent/pub(crate) enum InternalPromptProgressEvent/g' rust/crates/rusty-claude-cli/src/ui/progress.rs
-seresed -i '' 's/^struct InternalPromptProgressShared/pub(crate) struct InternalPromptProgressShared/g' rust/crates/rusty-claude-cli/src/ui/prog sed -i "''" "'s/^struct InternalPromptProgressReporter/pub(crate) struct InternalPromptProgressReporter/g'" rust/crates/rusty-claude-cli/src/ui/progrerased -i "''" "'s/^struct InternalPromptProgressRun/pub(crate) struct InternalPromptProgressRun/g'" rust/crates/rusty-claude-cli/src/ui/progress.rs
