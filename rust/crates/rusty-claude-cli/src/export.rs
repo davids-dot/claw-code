@@ -1,7 +1,6 @@
 use crate::*;
 use std::path::{Path, PathBuf};
 
-
 pub(crate) fn run_export(
     session_reference: &str,
     output_path: Option<&Path>,

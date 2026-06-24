@@ -106,7 +106,9 @@ pub(crate) fn collect_tool_results(summary: &runtime::TurnSummary) -> Vec<serde_
         .collect()
 }
 
-pub(crate) fn collect_prompt_cache_events(summary: &runtime::TurnSummary) -> Vec<serde_json::Value> {
+pub(crate) fn collect_prompt_cache_events(
+    summary: &runtime::TurnSummary,
+) -> Vec<serde_json::Value> {
     summary
         .prompt_cache_events
         .iter()
@@ -136,7 +138,11 @@ pub(crate) fn parse_titled_body(value: &str) -> Option<(String, String)> {
     Some((title.to_string(), body.to_string()))
 }
 
-pub(crate) fn truncate_output_for_display(content: &str, max_lines: usize, max_chars: usize) -> String {
+pub(crate) fn truncate_output_for_display(
+    content: &str,
+    max_lines: usize,
+    max_chars: usize,
+) -> String {
     let original = content.trim_end_matches('\n');
     if original.is_empty() {
         return String::new();

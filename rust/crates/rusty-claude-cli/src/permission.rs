@@ -14,10 +14,7 @@ impl CliPermissionPrompter {
 }
 
 impl runtime::PermissionPrompter for CliPermissionPrompter {
-    fn decide(
-        &mut self,
-        request: &PermissionRequest,
-    ) -> PermissionPromptDecision {
+    fn decide(&mut self, request: &PermissionRequest) -> PermissionPromptDecision {
         println!();
         println!("Permission approval required");
         println!("  Tool             {}", request.tool_name);

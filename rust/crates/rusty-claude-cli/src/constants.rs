@@ -18,11 +18,7 @@ pub(crate) const OFFICIAL_REPO_URL: &str = "https://github.com/ultraworkers/claw
 pub(crate) const OFFICIAL_REPO_SLUG: &str = "ultraworkers/claw-code";
 pub(crate) const DEPRECATED_INSTALL_COMMAND: &str = "cargo install claw-code";
 pub(crate) const LATEST_SESSION_REFERENCE: &str = "latest";
-pub(crate) const SESSION_REFERENCE_ALIASES: &[&str] = &[
-    LATEST_SESSION_REFERENCE,
-    "last",
-    "recent",
-];
+pub(crate) const SESSION_REFERENCE_ALIASES: &[&str] = &[LATEST_SESSION_REFERENCE, "last", "recent"];
 pub(crate) const CLI_OPTION_SUGGESTIONS: &[&str] = &[
     "--help",
     "-h",

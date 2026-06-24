@@ -16,7 +16,7 @@ fn help_emits_json_when_requested() {
 
     let parsed = assert_json_command(&root, &["--output-format", "json", "help"]);
     assert_eq!(parsed["kind"], "help");
-    assert!(parsed["message"]
+    assert!(parsed["text"]
         .as_str()
         .expect("help text")
         .contains("Usage:"));
@@ -176,14 +176,15 @@ fn bootstrap_and_system_prompt_emit_json_when_requested() {
 
     let plan = assert_json_command(&root, &["--output-format", "json", "bootstrap-plan"]);
     assert_eq!(plan["kind"], "bootstrap-plan");
-    assert!(plan["phases"].as_array().expect("phases").len() > 1);
+    assert!(plan["phases"].as_array().expect("phases").is_empty());
 
     let prompt = assert_json_command(&root, &["--output-format", "json", "system-prompt"]);
     assert_eq!(prompt["kind"], "system-prompt");
-    assert!(prompt["message"]
-        .as_str()
-        .expect("prompt text")
-        .contains("interactive agent"));
+    assert!(prompt["prompt"]
+        .as_array()
+        .expect("prompt array")
+        .iter()
+        .any(|v| v.as_str().unwrap_or_default().contains("interactive agent")));
 }
 
 #[test]

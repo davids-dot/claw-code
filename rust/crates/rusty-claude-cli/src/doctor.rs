@@ -4,8 +4,14 @@ use std::path::Path;
 use runtime::{ConfigLoader, ProjectContext};
 use serde_json::{json, Map, Value};
 
-use crate::constants::{BUILD_TARGET, DEFAULT_DATE, DEPRECATED_INSTALL_COMMAND, GIT_SHA, OFFICIAL_REPO_SLUG, OFFICIAL_REPO_URL, VERSION};
-use crate::{parse_git_status_metadata, parse_git_workspace_summary, resolve_sandbox_status, CliOutputFormat, StatusContext};
+use crate::constants::{
+    BUILD_TARGET, DEFAULT_DATE, DEPRECATED_INSTALL_COMMAND, GIT_SHA, OFFICIAL_REPO_SLUG,
+    OFFICIAL_REPO_URL, VERSION,
+};
+use crate::{
+    parse_git_status_metadata, parse_git_workspace_summary, resolve_sandbox_status,
+    CliOutputFormat, StatusContext,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum DiagnosticLevel {
@@ -38,7 +44,11 @@ pub(crate) struct DiagnosticCheck {
 }
 
 impl DiagnosticCheck {
-    pub(crate) fn new(name: &'static str, level: DiagnosticLevel, summary: impl Into<String>) -> Self {
+    pub(crate) fn new(
+        name: &'static str,
+        level: DiagnosticLevel,
+        summary: impl Into<String>,
+    ) -> Self {
         Self {
             name,
             level,
@@ -60,12 +70,19 @@ impl DiagnosticCheck {
 
     pub(crate) fn json_value(&self) -> Value {
         let mut value = Map::from_iter([
-            ("name".to_string(), Value::String(self.name.to_ascii_lowercase())),
-            ("status".to_string(), Value::String(self.level.label().to_string())),
+            (
+                "name".to_string(),
+                Value::String(self.name.to_ascii_lowercase()),
+            ),
+            (
+                "status".to_string(),
+                Value::String(self.level.label().to_string()),
+            ),
             ("summary".to_string(), Value::String(self.summary.clone())),
-            ("details".to_string(), Value::Array(
-                self.details.iter().cloned().map(Value::String).collect(),
-            )),
+            (
+                "details".to_string(),
+                Value::Array(self.details.iter().cloned().map(Value::String).collect()),
+            ),
         ]);
         value.extend(self.data.clone());
         Value::Object(value)
@@ -80,9 +97,18 @@ pub(crate) struct DoctorReport {
 impl DoctorReport {
     pub(crate) fn counts(&self) -> (usize, usize, usize) {
         (
-            self.checks.iter().filter(|c| c.level == DiagnosticLevel::Ok).count(),
-            self.checks.iter().filter(|c| c.level == DiagnosticLevel::Warn).count(),
-            self.checks.iter().filter(|c| c.level == DiagnosticLevel::Fail).count(),
+            self.checks
+                .iter()
+                .filter(|c| c.level == DiagnosticLevel::Ok)
+                .count(),
+            self.checks
+                .iter()
+                .filter(|c| c.level == DiagnosticLevel::Warn)
+                .count(),
+            self.checks
+                .iter()
+                .filter(|c| c.level == DiagnosticLevel::Fail)
+                .count(),
         )
     }
 
@@ -103,7 +129,7 @@ impl DoctorReport {
     pub(crate) fn json_value(&self) -> Value {
         let report = self.render();
         let (ok_count, warn_count, fail_count) = self.counts();
-       serde_json::json!({
+        serde_json::json!({
             "kind": "doctor",
             "message": report,
             "report": report,
@@ -139,7 +165,8 @@ pub(crate) fn render_doctor_report() -> Result<DoctorReport, Box<dyn std::error:
     let config = config_loader.load();
     let discovered_config = config_loader.discover();
     let project_context = ProjectContext::discover_with_git(&cwd, DEFAULT_DATE)?;
-    let (project_root, git_branch) = parse_git_status_metadata(project_context.git_status.as_deref());
+    let (project_root, git_branch) =
+        parse_git_status_metadata(project_context.git_status.as_deref());
     let git_summary = parse_git_workspace_summary(project_context.git_status.as_deref());
     let empty_config = runtime::RuntimeConfig::empty();
     let sandbox_config = config.as_ref().ok().unwrap_or(&empty_config);
@@ -184,12 +211,20 @@ pub(crate) fn run_doctor(output_format: CliOutputFormat) -> Result<(), Box<dyn s
 }
 
 fn check_auth_health() -> DiagnosticCheck {
-    let api_key_present = env::var("ANTHROPIC_API_KEY").ok().is_some_and(|v| !v.trim().is_empty());
-    let auth_token_present = env::var("ANTHROPIC_AUTH_TOKEN").ok().is_some_and(|v| !v.trim().is_empty());
+    let api_key_present = env::var("ANTHROPIC_API_KEY")
+        .ok()
+        .is_some_and(|v| !v.trim().is_empty());
+    let auth_token_present = env::var("ANTHROPIC_AUTH_TOKEN")
+        .ok()
+        .is_some_and(|v| !v.trim().is_empty());
     let env_details = format!(
         "Environment       api_key={} auth_token={}",
         if api_key_present { "present" } else { "absent" },
-        if auth_token_present { "present" } else { "absent" },
+        if auth_token_present {
+            "present"
+        } else {
+            "absent"
+        },
     );
 
     match runtime::load_oauth_credentials() {
@@ -260,41 +295,102 @@ fn check_config_health(
     config: Result<&runtime::RuntimeConfig, &runtime::ConfigError>,
 ) -> DiagnosticCheck {
     let discovered = config_loader.discover();
-    let present_paths: Vec<String> = discovered.iter().filter(|e| e.path.exists()).map(|e| e.path.display().to_string()).collect();
-    let discovered_paths: Vec<String> = discovered.iter().map(|e| e.path.display().to_string()).collect();
+    let present_paths: Vec<String> = discovered
+        .iter()
+        .filter(|e| e.path.exists())
+        .map(|e| e.path.display().to_string())
+        .collect();
+    let discovered_paths: Vec<String> = discovered
+        .iter()
+        .map(|e| e.path.display().to_string())
+        .collect();
     match config {
         Ok(runtime_config) => {
             let loaded_entries = runtime_config.loaded_entries();
-            let mut details = vec![format!("Config files      loaded {}/{}", loaded_entries.len(), present_paths.len())];
+            let mut details = vec![format!(
+                "Config files      loaded {}/{}",
+                loaded_entries.len(),
+                present_paths.len()
+            )];
             if let Some(model) = runtime_config.model() {
                 details.push(format!("Resolved model    {model}"));
             }
-            details.push(format!("MCP servers       {}", runtime_config.mcp().servers().len()));
+            details.push(format!(
+                "MCP servers       {}",
+                runtime_config.mcp().servers().len()
+            ));
             if present_paths.is_empty() {
                 details.push("Discovered files  <none> (defaults active)".to_string());
             } else {
-                details.extend(present_paths.iter().map(|p| format!("Discovered file   {p}")));
+                details.extend(
+                    present_paths
+                        .iter()
+                        .map(|p| format!("Discovered file   {p}")),
+                );
             }
-            DiagnosticCheck::new("Config", DiagnosticLevel::Ok, if present_paths.is_empty() { "no config files present; defaults are active" } else { "runtime config loaded successfully" })
-                .with_details(details)
-                .with_data(Map::from_iter([
-                    ("discovered_files".to_string(),serde_json::json!(present_paths)),
-                    ("discovered_files_count".to_string(),serde_json::json!(present_paths.len())),
-                    ("loaded_config_files".to_string(),serde_json::json!(loaded_entries.len())),
-                    ("resolved_model".to_string(),serde_json::json!(runtime_config.model())),
-                    ("mcp_servers".to_string(),serde_json::json!(runtime_config.mcp().servers().len())),
-                ]))
-        }
-        Err(error) => DiagnosticCheck::new("Config", DiagnosticLevel::Fail, format!("runtime config failed to load: {error}"))
-            .with_details(if discovered_paths.is_empty() { vec!["Discovered files  <none>".to_string()] } else { discovered_paths.iter().map(|p| format!("Discovered file   {p}")).collect() })
+            DiagnosticCheck::new(
+                "Config",
+                DiagnosticLevel::Ok,
+                if present_paths.is_empty() {
+                    "no config files present; defaults are active"
+                } else {
+                    "runtime config loaded successfully"
+                },
+            )
+            .with_details(details)
             .with_data(Map::from_iter([
-                ("discovered_files".to_string(),serde_json::json!(discovered_paths)),
-                ("discovered_files_count".to_string(),serde_json::json!(discovered_paths.len())),
-                ("loaded_config_files".to_string(),serde_json::json!(0)),
-                ("resolved_model".to_string(), Value::Null),
-                ("mcp_servers".to_string(), Value::Null),
-                ("load_error".to_string(),serde_json::json!(error.to_string())),
-            ])),
+                (
+                    "discovered_files".to_string(),
+                    serde_json::json!(present_paths),
+                ),
+                (
+                    "discovered_files_count".to_string(),
+                    serde_json::json!(present_paths.len()),
+                ),
+                (
+                    "loaded_config_files".to_string(),
+                    serde_json::json!(loaded_entries.len()),
+                ),
+                (
+                    "resolved_model".to_string(),
+                    serde_json::json!(runtime_config.model()),
+                ),
+                (
+                    "mcp_servers".to_string(),
+                    serde_json::json!(runtime_config.mcp().servers().len()),
+                ),
+            ]))
+        }
+        Err(error) => DiagnosticCheck::new(
+            "Config",
+            DiagnosticLevel::Fail,
+            format!("runtime config failed to load: {error}"),
+        )
+        .with_details(if discovered_paths.is_empty() {
+            vec!["Discovered files  <none>".to_string()]
+        } else {
+            discovered_paths
+                .iter()
+                .map(|p| format!("Discovered file   {p}"))
+                .collect()
+        })
+        .with_data(Map::from_iter([
+            (
+                "discovered_files".to_string(),
+                serde_json::json!(discovered_paths),
+            ),
+            (
+                "discovered_files_count".to_string(),
+                serde_json::json!(discovered_paths.len()),
+            ),
+            ("loaded_config_files".to_string(), serde_json::json!(0)),
+            ("resolved_model".to_string(), Value::Null),
+            ("mcp_servers".to_string(), Value::Null),
+            (
+                "load_error".to_string(),
+                serde_json::json!(error.to_string()),
+            ),
+        ])),
     }
 }
 
@@ -314,27 +410,79 @@ fn check_install_source_health() -> DiagnosticCheck {
 
 fn check_workspace_health(context: &StatusContext) -> DiagnosticCheck {
     let in_repo = context.project_root.is_some();
-    DiagnosticCheck::new("Workspace", if in_repo { DiagnosticLevel::Ok } else { DiagnosticLevel::Warn },
-        if in_repo { format!("project root detected on branch {}", context.git_branch.as_deref().unwrap_or("unknown")) } else { "current directory is not inside a git project".to_string() },
+    DiagnosticCheck::new(
+        "Workspace",
+        if in_repo {
+            DiagnosticLevel::Ok
+        } else {
+            DiagnosticLevel::Warn
+        },
+        if in_repo {
+            format!(
+                "project root detected on branch {}",
+                context.git_branch.as_deref().unwrap_or("unknown")
+            )
+        } else {
+            "current directory is not inside a git project".to_string()
+        },
     )
     .with_details(vec![
         format!("Cwd              {}", context.cwd.display()),
-        format!("Project root     {}", context.project_root.as_ref().map_or_else(|| "<none>".to_string(), |p| p.display().to_string())),
-        format!("Git branch       {}", context.git_branch.as_deref().unwrap_or("unknown")),
+        format!(
+            "Project root     {}",
+            context
+                .project_root
+                .as_ref()
+                .map_or_else(|| "<none>".to_string(), |p| p.display().to_string())
+        ),
+        format!(
+            "Git branch       {}",
+            context.git_branch.as_deref().unwrap_or("unknown")
+        ),
         format!("Git state        {}", context.git_summary.headline()),
         format!("Changed files    {}", context.git_summary.changed_files),
-        format!("Memory files     {} · config files loaded {}/{}", context.memory_file_count, context.loaded_config_files, context.discovered_config_files),
+        format!(
+            "Memory files     {} · config files loaded {}/{}",
+            context.memory_file_count, context.loaded_config_files, context.discovered_config_files
+        ),
     ])
     .with_data(Map::from_iter([
-        ("cwd".to_string(),serde_json::json!(context.cwd.display().to_string())),
-        ("project_root".to_string(),serde_json::json!(context.project_root.as_ref().map(|p| p.display().to_string()))),
-        ("in_git_repo".to_string(),serde_json::json!(in_repo)),
-        ("git_branch".to_string(),serde_json::json!(context.git_branch)),
-        ("git_state".to_string(),serde_json::json!(context.git_summary.headline())),
-        ("changed_files".to_string(),serde_json::json!(context.git_summary.changed_files)),
-        ("memory_file_count".to_string(),serde_json::json!(context.memory_file_count)),
-        ("loaded_config_files".to_string(),serde_json::json!(context.loaded_config_files)),
-        ("discovered_config_files".to_string(),serde_json::json!(context.discovered_config_files)),
+        (
+            "cwd".to_string(),
+            serde_json::json!(context.cwd.display().to_string()),
+        ),
+        (
+            "project_root".to_string(),
+            serde_json::json!(context
+                .project_root
+                .as_ref()
+                .map(|p| p.display().to_string())),
+        ),
+        ("in_git_repo".to_string(), serde_json::json!(in_repo)),
+        (
+            "git_branch".to_string(),
+            serde_json::json!(context.git_branch),
+        ),
+        (
+            "git_state".to_string(),
+            serde_json::json!(context.git_summary.headline()),
+        ),
+        (
+            "changed_files".to_string(),
+            serde_json::json!(context.git_summary.changed_files),
+        ),
+        (
+            "memory_file_count".to_string(),
+            serde_json::json!(context.memory_file_count),
+        ),
+        (
+            "loaded_config_files".to_string(),
+            serde_json::json!(context.loaded_config_files),
+        ),
+        (
+            "discovered_config_files".to_string(),
+            serde_json::json!(context.discovered_config_files),
+        ),
     ]))
 }
 
@@ -350,25 +498,66 @@ fn check_sandbox_health(status: &runtime::SandboxStatus) -> DiagnosticCheck {
     if let Some(reason) = &status.fallback_reason {
         details.push(format!("Fallback reason  {reason}"));
     }
-    DiagnosticCheck::new("Sandbox",
-        if degraded { DiagnosticLevel::Warn } else { DiagnosticLevel::Ok },
-        if degraded { "sandbox was requested but is not currently active" } else if status.active { "sandbox protections are active" } else { "sandbox is not active for this session" },
+    DiagnosticCheck::new(
+        "Sandbox",
+        if degraded {
+            DiagnosticLevel::Warn
+        } else {
+            DiagnosticLevel::Ok
+        },
+        if degraded {
+            "sandbox was requested but is not currently active"
+        } else if status.active {
+            "sandbox protections are active"
+        } else {
+            "sandbox is not active for this session"
+        },
     )
     .with_details(details)
     .with_data(Map::from_iter([
-        ("enabled".to_string(),serde_json::json!(status.enabled)),
-        ("active".to_string(),serde_json::json!(status.active)),
-        ("supported".to_string(),serde_json::json!(status.supported)),
-        ("namespace_supported".to_string(),serde_json::json!(status.namespace_supported)),
-        ("namespace_active".to_string(),serde_json::json!(status.namespace_active)),
-        ("network_supported".to_string(),serde_json::json!(status.network_supported)),
-        ("network_active".to_string(),serde_json::json!(status.network_active)),
-        ("filesystem_mode".to_string(),serde_json::json!(status.filesystem_mode.as_str())),
-        ("filesystem_active".to_string(),serde_json::json!(status.filesystem_active)),
-        ("allowed_mounts".to_string(),serde_json::json!(status.allowed_mounts)),
-        ("in_container".to_string(),serde_json::json!(status.in_container)),
-        ("container_markers".to_string(),serde_json::json!(status.container_markers)),
-        ("fallback_reason".to_string(),serde_json::json!(status.fallback_reason)),
+        ("enabled".to_string(), serde_json::json!(status.enabled)),
+        ("active".to_string(), serde_json::json!(status.active)),
+        ("supported".to_string(), serde_json::json!(status.supported)),
+        (
+            "namespace_supported".to_string(),
+            serde_json::json!(status.namespace_supported),
+        ),
+        (
+            "namespace_active".to_string(),
+            serde_json::json!(status.namespace_active),
+        ),
+        (
+            "network_supported".to_string(),
+            serde_json::json!(status.network_supported),
+        ),
+        (
+            "network_active".to_string(),
+            serde_json::json!(status.network_active),
+        ),
+        (
+            "filesystem_mode".to_string(),
+            serde_json::json!(status.filesystem_mode.as_str()),
+        ),
+        (
+            "filesystem_active".to_string(),
+            serde_json::json!(status.filesystem_active),
+        ),
+        (
+            "allowed_mounts".to_string(),
+            serde_json::json!(status.allowed_mounts),
+        ),
+        (
+            "in_container".to_string(),
+            serde_json::json!(status.in_container),
+        ),
+        (
+            "container_markers".to_string(),
+            serde_json::json!(status.container_markers),
+        ),
+        (
+            "fallback_reason".to_string(),
+            serde_json::json!(status.fallback_reason),
+        ),
     ]))
 }
 
@@ -384,15 +573,25 @@ fn check_system_health(cwd: &Path, config: Option<&runtime::RuntimeConfig>) -> D
     if let Some(model) = default_model {
         details.push(format!("Default model    {model}"));
     }
-    DiagnosticCheck::new("System", DiagnosticLevel::Ok, "captured local runtime metadata")
-        .with_details(details)
-        .with_data(Map::from_iter([
-            ("os".to_string(),serde_json::json!(env::consts::OS)),
-            ("arch".to_string(),serde_json::json!(env::consts::ARCH)),
-            ("working_dir".to_string(),serde_json::json!(cwd.display().to_string())),
-            ("version".to_string(),serde_json::json!(VERSION)),
-            ("build_target".to_string(),serde_json::json!(BUILD_TARGET)),
-            ("git_sha".to_string(),serde_json::json!(GIT_SHA)),
-            ("default_model".to_string(),serde_json::json!(default_model)),
-        ]))
+    DiagnosticCheck::new(
+        "System",
+        DiagnosticLevel::Ok,
+        "captured local runtime metadata",
+    )
+    .with_details(details)
+    .with_data(Map::from_iter([
+        ("os".to_string(), serde_json::json!(env::consts::OS)),
+        ("arch".to_string(), serde_json::json!(env::consts::ARCH)),
+        (
+            "working_dir".to_string(),
+            serde_json::json!(cwd.display().to_string()),
+        ),
+        ("version".to_string(), serde_json::json!(VERSION)),
+        ("build_target".to_string(), serde_json::json!(BUILD_TARGET)),
+        ("git_sha".to_string(), serde_json::json!(GIT_SHA)),
+        (
+            "default_model".to_string(),
+            serde_json::json!(default_model),
+        ),
+    ]))
 }

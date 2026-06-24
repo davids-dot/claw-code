@@ -111,11 +111,11 @@ pub(crate) fn resolve_repl_model(cli_model: String) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
-    use std::sync::{Mutex, MutexGuard, OnceLock};
-    use std::sync::atomic::{AtomicUsize, Ordering};
-    use std::path::{Path, PathBuf};
+
     use std::fs;
+    use std::path::{Path, PathBuf};
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::{Mutex, MutexGuard, OnceLock};
 
     fn env_lock() -> MutexGuard<'static, ()> {
         static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
@@ -153,98 +153,97 @@ mod tests {
         }
     }
 
+    #[test]
+    fn resolves_known_model_aliases() {
+        assert_eq!(resolve_model_alias("opus"), "claude-opus-4-6");
+        assert_eq!(resolve_model_alias("sonnet"), "claude-sonnet-4-6");
+        assert_eq!(resolve_model_alias("haiku"), "claude-haiku-4-5-20251213");
+        assert_eq!(resolve_model_alias("claude-opus"), "claude-opus");
+    }
 
     #[test]
-        fn resolves_known_model_aliases() {
-            assert_eq!(resolve_model_alias("opus"), "claude-opus-4-6");
-            assert_eq!(resolve_model_alias("sonnet"), "claude-sonnet-4-6");
-            assert_eq!(resolve_model_alias("haiku"), "claude-haiku-4-5-20251213");
-            assert_eq!(resolve_model_alias("claude-opus"), "claude-opus");
-        }
-
-    #[test]
-        fn user_defined_aliases_resolve_before_provider_dispatch() {
-            // given
-            let _guard = env_lock();
-            let root = temp_dir();
-            let cwd = root.join("project");
-            let config_home = root.join("config-home");
-            std::fs::create_dir_all(cwd.join(".claw")).expect("project config dir should exist");
-            std::fs::create_dir_all(&config_home).expect("config home should exist");
-            std::fs::write(
+    fn user_defined_aliases_resolve_before_provider_dispatch() {
+        // given
+        let _guard = env_lock();
+        let root = temp_dir();
+        let cwd = root.join("project");
+        let config_home = root.join("config-home");
+        std::fs::create_dir_all(cwd.join(".claw")).expect("project config dir should exist");
+        std::fs::create_dir_all(&config_home).expect("config home should exist");
+        std::fs::write(
                 cwd.join(".claw").join("settings.json"),
                 r#"{"aliases":{"fast":"claude-haiku-4-5-20251213","smart":"opus","cheap":"grok-3-mini"}}"#,
             )
             .expect("project config should write");
-    
-            let original_config_home = std::env::var("CLAW_CONFIG_HOME").ok();
-            std::env::set_var("CLAW_CONFIG_HOME", &config_home);
-    
-            // when
-            let direct = with_current_dir(&cwd, || resolve_model_alias_with_config("fast"));
-            let chained = with_current_dir(&cwd, || resolve_model_alias_with_config("smart"));
-            let cross_provider = with_current_dir(&cwd, || resolve_model_alias_with_config("cheap"));
-            let unknown = with_current_dir(&cwd, || resolve_model_alias_with_config("unknown-model"));
-            let builtin = with_current_dir(&cwd, || resolve_model_alias_with_config("haiku"));
-    
-            match original_config_home {
-                Some(value) => std::env::set_var("CLAW_CONFIG_HOME", value),
-                None => std::env::remove_var("CLAW_CONFIG_HOME"),
-            }
-            std::fs::remove_dir_all(root).expect("temp config root should clean up");
-    
-            // then
-            assert_eq!(direct, "claude-haiku-4-5-20251213");
-            assert_eq!(chained, "claude-opus-4-6");
-            assert_eq!(cross_provider, "grok-3-mini");
-            assert_eq!(unknown, "unknown-model");
-            assert_eq!(builtin, "claude-haiku-4-5-20251213");
+
+        let original_config_home = std::env::var("CLAW_CONFIG_HOME").ok();
+        std::env::set_var("CLAW_CONFIG_HOME", &config_home);
+
+        // when
+        let direct = with_current_dir(&cwd, || resolve_model_alias_with_config("fast"));
+        let chained = with_current_dir(&cwd, || resolve_model_alias_with_config("smart"));
+        let cross_provider = with_current_dir(&cwd, || resolve_model_alias_with_config("cheap"));
+        let unknown = with_current_dir(&cwd, || resolve_model_alias_with_config("unknown-model"));
+        let builtin = with_current_dir(&cwd, || resolve_model_alias_with_config("haiku"));
+
+        match original_config_home {
+            Some(value) => std::env::set_var("CLAW_CONFIG_HOME", value),
+            None => std::env::remove_var("CLAW_CONFIG_HOME"),
         }
+        std::fs::remove_dir_all(root).expect("temp config root should clean up");
+
+        // then
+        assert_eq!(direct, "claude-haiku-4-5-20251213");
+        assert_eq!(chained, "claude-opus-4-6");
+        assert_eq!(cross_provider, "grok-3-mini");
+        assert_eq!(unknown, "unknown-model");
+        assert_eq!(builtin, "claude-haiku-4-5-20251213");
+    }
 
     #[test]
-        fn resolve_repl_model_returns_user_supplied_model_unchanged_when_explicit() {
-            let user_model = "claude-sonnet-4-6".to_string();
-    
-            let resolved = resolve_repl_model(user_model);
-    
-            assert_eq!(resolved, "claude-sonnet-4-6");
-        }
+    fn resolve_repl_model_returns_user_supplied_model_unchanged_when_explicit() {
+        let user_model = "claude-sonnet-4-6".to_string();
+
+        let resolved = resolve_repl_model(user_model);
+
+        assert_eq!(resolved, "claude-sonnet-4-6");
+    }
 
     #[test]
-        fn resolve_repl_model_falls_back_to_anthropic_model_env_when_default() {
-            let _guard = env_lock();
-            let root = temp_dir();
-            fs::create_dir_all(&root).expect("root dir");
-            let config_home = root.join("config");
-            fs::create_dir_all(&config_home).expect("config home dir");
-            std::env::set_var("CLAW_CONFIG_HOME", &config_home);
-            std::env::remove_var("ANTHROPIC_MODEL");
-            std::env::set_var("ANTHROPIC_MODEL", "sonnet");
-    
-            let resolved = with_current_dir(&root, || resolve_repl_model(DEFAULT_MODEL.to_string()));
-    
-            assert_eq!(resolved, "claude-sonnet-4-6");
-    
-            std::env::remove_var("ANTHROPIC_MODEL");
-            std::env::remove_var("CLAW_CONFIG_HOME");
-            fs::remove_dir_all(root).expect("cleanup temp dir");
-        }
+    fn resolve_repl_model_falls_back_to_anthropic_model_env_when_default() {
+        let _guard = env_lock();
+        let root = temp_dir();
+        fs::create_dir_all(&root).expect("root dir");
+        let config_home = root.join("config");
+        fs::create_dir_all(&config_home).expect("config home dir");
+        std::env::set_var("CLAW_CONFIG_HOME", &config_home);
+        std::env::remove_var("ANTHROPIC_MODEL");
+        std::env::set_var("ANTHROPIC_MODEL", "sonnet");
+
+        let resolved = with_current_dir(&root, || resolve_repl_model(DEFAULT_MODEL.to_string()));
+
+        assert_eq!(resolved, "claude-sonnet-4-6");
+
+        std::env::remove_var("ANTHROPIC_MODEL");
+        std::env::remove_var("CLAW_CONFIG_HOME");
+        fs::remove_dir_all(root).expect("cleanup temp dir");
+    }
 
     #[test]
-        fn resolve_repl_model_returns_default_when_env_unset_and_no_config() {
-            let _guard = env_lock();
-            let root = temp_dir();
-            fs::create_dir_all(&root).expect("root dir");
-            let config_home = root.join("config");
-            fs::create_dir_all(&config_home).expect("config home dir");
-            std::env::set_var("CLAW_CONFIG_HOME", &config_home);
-            std::env::remove_var("ANTHROPIC_MODEL");
-    
-            let resolved = with_current_dir(&root, || resolve_repl_model(DEFAULT_MODEL.to_string()));
-    
-            assert_eq!(resolved, DEFAULT_MODEL);
-    
-            std::env::remove_var("CLAW_CONFIG_HOME");
-            fs::remove_dir_all(root).expect("cleanup temp dir");
-        }
+    fn resolve_repl_model_returns_default_when_env_unset_and_no_config() {
+        let _guard = env_lock();
+        let root = temp_dir();
+        fs::create_dir_all(&root).expect("root dir");
+        let config_home = root.join("config");
+        fs::create_dir_all(&config_home).expect("config home dir");
+        std::env::set_var("CLAW_CONFIG_HOME", &config_home);
+        std::env::remove_var("ANTHROPIC_MODEL");
+
+        let resolved = with_current_dir(&root, || resolve_repl_model(DEFAULT_MODEL.to_string()));
+
+        assert_eq!(resolved, DEFAULT_MODEL);
+
+        std::env::remove_var("CLAW_CONFIG_HOME");
+        fs::remove_dir_all(root).expect("cleanup temp dir");
+    }
 }

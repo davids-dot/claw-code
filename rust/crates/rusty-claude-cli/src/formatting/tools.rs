@@ -1,14 +1,14 @@
-use std::io::{self, Write};
-use serde_json::json;
-use runtime::{RuntimeError, AssistantEvent};
-use api::OutputContentBlock;
-use crate::render::TerminalRenderer;
 use super::helpers::*;
 use super::{
     DISPLAY_TRUNCATION_NOTICE, READ_DISPLAY_MAX_CHARS, READ_DISPLAY_MAX_LINES,
     SESSION_MARKDOWN_TOOL_SUMMARY_LIMIT, TOOL_OUTPUT_DISPLAY_MAX_CHARS,
     TOOL_OUTPUT_DISPLAY_MAX_LINES,
 };
+use crate::render::TerminalRenderer;
+use api::OutputContentBlock;
+use runtime::{AssistantEvent, RuntimeError};
+use serde_json::json;
+use std::io::{self, Write};
 
 pub(crate) fn short_tool_id(id: &str) -> String {
     let char_count = id.chars().count();
@@ -354,7 +354,11 @@ pub(crate) fn format_grep_result(icon: &str, parsed: &serde_json::Value) -> Stri
     }
 }
 
-pub(crate) fn format_generic_tool_result(icon: &str, name: &str, parsed: &serde_json::Value) -> String {
+pub(crate) fn format_generic_tool_result(
+    icon: &str,
+    name: &str,
+    parsed: &serde_json::Value,
+) -> String {
     let rendered_output = match parsed {
         serde_json::Value::String(text) => text.clone(),
         serde_json::Value::Null => String::new(),
@@ -489,4 +493,3 @@ pub(crate) fn prompt_cache_record_to_runtime_event(
         token_drop: cache_break.token_drop,
     })
 }
-

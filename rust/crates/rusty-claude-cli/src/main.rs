@@ -9,6 +9,7 @@
     clippy::doc_markdown,
     clippy::result_large_err
 )]
+mod api_client;
 mod args;
 mod config;
 mod constants;
@@ -17,46 +18,45 @@ mod doctor;
 mod error;
 mod export;
 mod formatting;
-mod status;
-mod session;
 mod init;
 mod input;
 mod live_cli;
 mod model;
 mod models;
 mod permission;
-mod api_client;
 mod progress;
 mod render;
-mod tool_executor;
-mod runtime_builder;
 mod repl_commands;
+mod runtime_builder;
+mod session;
 mod setup_wizard;
+mod status;
 mod steer;
+mod tool_executor;
 
 pub(crate) use api_client::*;
 pub(crate) use args::*;
+pub(crate) use commands::*;
 pub(crate) use config::*;
 pub(crate) use constants::*;
 pub(crate) use diff::*;
 pub(crate) use doctor::*;
 pub(crate) use error::*;
 pub(crate) use export::*;
-pub(crate) use live_cli::*;
-pub(crate) use repl_commands::*;
 pub(crate) use formatting::*;
-pub(crate) use status::*;
-pub(crate) use session::*;
 pub(crate) use init::*;
+pub(crate) use live_cli::*;
 pub(crate) use model::*;
 pub(crate) use models::*;
 pub(crate) use permission::*;
 pub(crate) use progress::*;
-pub(crate) use tool_executor::*;
-pub(crate) use runtime_builder::*;
 pub(crate) use render::*;
-pub(crate) use commands::*;
+pub(crate) use repl_commands::*;
 pub(crate) use runtime::*;
+pub(crate) use runtime_builder::*;
+pub(crate) use session::*;
+pub(crate) use status::*;
+pub(crate) use tool_executor::*;
 
 pub(crate) use steer::*;
 
@@ -96,13 +96,9 @@ fn main() {
         } else {
             let kind = classify_error_kind(&message);
             if message.contains("`claw --help`") {
-                eprintln!(
-                    "[error-kind: {kind}]\nerror: {message}"
-                );
+                eprintln!("[error-kind: {kind}]\nerror: {message}");
             } else {
-                eprintln!(
-                    "[error-kind: {kind}]\nerror: {message}\nRun `claw --help` for usage."
-                );
+                eprintln!("[error-kind: {kind}]\nerror: {message}\nRun `claw --help` for usage.");
             }
         }
         std::process::exit(1);
@@ -202,7 +198,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         } => {
             enforce_broad_cwd_policy(allow_broad_cwd, output_format)?;
             run_stale_base_preflight(base_commit.as_deref());
-            
+
             let stdin_context = if matches!(permission_mode, PermissionMode::DangerFullAccess) {
                 read_piped_stdin()
             } else {

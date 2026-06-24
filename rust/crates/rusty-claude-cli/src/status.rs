@@ -1,13 +1,15 @@
+use crate::args::*;
+use crate::model::*;
+use crate::*;
+use runtime::resolve_sandbox_status;
+use runtime::{
+    ConfigLoader, PermissionMode, ProjectContext, SandboxConfig, SandboxStatus, TokenUsage,
+};
+use serde_json::{json, Map, Value};
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use serde_json::{json, Map, Value};
-use runtime::{ConfigLoader, PermissionMode, ProjectContext, SandboxConfig, SandboxStatus, TokenUsage};
-use runtime::resolve_sandbox_status;
-use crate::args::*;
-use crate::model::*;
-use crate::*;
 
 #[derive(Debug, Clone)]
 pub(crate) struct StatusContext {
@@ -222,7 +224,7 @@ pub(crate) fn status_json_value(
     let model_source = provenance.map(|p| p.source.as_str());
     let model_raw = provenance.and_then(|p| p.raw.clone());
     let allowed_tool_entries = allowed_tools.map(|tools| tools.iter().cloned().collect::<Vec<_>>());
-   serde_json::json!({
+    serde_json::json!({
         "kind": "status",
         "status": if degraded { "degraded" } else { "ok" },
         "config_load_error": context.config_load_error,
@@ -469,7 +471,10 @@ pub(crate) fn format_sandbox_report(status: &runtime::SandboxStatus) -> String {
     )
 }
 
-pub(crate) fn format_commit_preflight_report(branch: Option<&str>, summary: GitWorkspaceSummary) -> String {
+pub(crate) fn format_commit_preflight_report(
+    branch: Option<&str>,
+    summary: GitWorkspaceSummary,
+) -> String {
     format!(
         "Commit
   Result           ready
@@ -512,7 +517,7 @@ pub(crate) fn print_sandbox_status_snapshot(
 }
 
 pub(crate) fn sandbox_json_value(status: &runtime::SandboxStatus) -> serde_json::Value {
-   serde_json::json!({
+    serde_json::json!({
         "kind": "sandbox",
         "enabled": status.enabled,
         "active": status.active,
@@ -529,4 +534,3 @@ pub(crate) fn sandbox_json_value(status: &runtime::SandboxStatus) -> serde_json:
         "fallback_reason": status.fallback_reason,
     })
 }
-

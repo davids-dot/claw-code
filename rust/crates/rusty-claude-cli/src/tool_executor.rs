@@ -5,9 +5,7 @@ use api::{InputContentBlock, InputMessage, ToolResultContentBlock};
 use serde::Deserialize;
 use serde_json;
 
-use runtime::{
-    ContentBlock, ConversationMessage, MessageRole, ToolError, ToolExecutor,
-};
+use runtime::{ContentBlock, ConversationMessage, MessageRole, ToolError, ToolExecutor};
 use tools::GlobalToolRegistry;
 
 use crate::constants::*;

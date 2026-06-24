@@ -53,7 +53,7 @@ mod tests {
             PluginToolDefinition {
                 name: "plugin_echo".to_string(),
                 description: Some("Echo plugin payload".to_string()),
-                input_schema:serde_json::json!({
+                input_schema: serde_json::json!({
                     "type": "object",
                     "properties": {
                         "message": { "type": "string" }
@@ -2456,12 +2456,12 @@ mod tests {
             .into_iter()
             .map(|spec| spec.name)
             .collect::<Vec<_>>();
-// Now with stub commands having resume_supported=false, verify minimum resume support
-assert!(
-names.len() >= 10,
-"expected at least 10 resume-supported commands, got {}",
-names.len()
-);
+        // Now with stub commands having resume_supported=false, verify minimum resume support
+        assert!(
+            names.len() >= 10,
+            "expected at least 10 resume-supported commands, got {}",
+            names.len()
+        );
         // Verify key resume commands still exist
         assert!(names.contains(&"help"));
         assert!(names.contains(&"status"));
@@ -2720,7 +2720,12 @@ names.len()
 
         eprintln!("DEBUG report:\n{report}");
         assert!(report.contains("session-alpha"));
-        assert!(report.contains("lifecycle=") && report.contains("dirty worktree") && report.contains("abandoned?"), "expected lifecycle with dirty worktree and abandoned?, got:\n{report}");
+        assert!(
+            report.contains("lifecycle=")
+                && report.contains("dirty worktree")
+                && report.contains("abandoned?"),
+            "expected lifecycle with dirty worktree and abandoned?, got:\n{report}"
+        );
 
         std::env::set_current_dir(previous).expect("restore cwd");
         fs::remove_dir_all(workspace).expect("cleanup temp dir");
@@ -3494,7 +3499,7 @@ UU conflicted.rs",
             .map(|index| format!("line {index:03}"))
             .collect::<Vec<_>>()
             .join("\n");
-        let output =serde_json::json!({
+        let output = serde_json::json!({
             "file": {
                 "filePath": "src/main.rs",
                 "content": content,
@@ -3520,7 +3525,7 @@ UU conflicted.rs",
             .map(|index| format!("stdout {index:03}"))
             .collect::<Vec<_>>()
             .join("\n");
-        let output =serde_json::json!({
+        let output = serde_json::json!({
             "stdout": stdout,
             "stderr": "",
             "returnCodeInterpretation": "completed successfully"
@@ -3541,7 +3546,7 @@ UU conflicted.rs",
         let items = (0..120)
             .map(|index| format!("payload {index:03}"))
             .collect::<Vec<_>>();
-        let output =serde_json::json!({
+        let output = serde_json::json!({
             "summary": "plugin payload",
             "items": items,
         })
@@ -3673,7 +3678,7 @@ UU conflicted.rs",
             OutputContentBlock::ToolUse {
                 id: "tool-1".to_string(),
                 name: "read_file".to_string(),
-                input:serde_json::json!({}),
+                input: serde_json::json!({}),
             },
             &mut out,
             &mut events,
@@ -3702,7 +3707,7 @@ UU conflicted.rs",
                 content: vec![OutputContentBlock::ToolUse {
                     id: "tool-1".to_string(),
                     name: "read_file".to_string(),
-                    input:serde_json::json!({}),
+                    input: serde_json::json!({}),
                 }],
                 stop_reason: Some("tool_use".to_string()),
                 stop_sequence: None,
@@ -3737,7 +3742,7 @@ UU conflicted.rs",
                 content: vec![OutputContentBlock::ToolUse {
                     id: "tool-2".to_string(),
                     name: "read_file".to_string(),
-                    input:serde_json::json!({ "path": "rust/Cargo.toml" }),
+                    input: serde_json::json!({ "path": "rust/Cargo.toml" }),
                 }],
                 stop_reason: Some("tool_use".to_string()),
                 stop_sequence: None,
@@ -3868,10 +3873,13 @@ UU conflicted.rs",
 
         let allowed = state
             .tool_registry
-.normalize_allowed_tools(&["mcp__alpha__fixture_tool".to_string(), "MCPTool".to_string()])
-.expect("mcp tools should be allow-listable")
-.expect("allow-list should exist");
-assert!(allowed.contains("mcp__alpha__fixture_tool"));
+            .normalize_allowed_tools(&[
+                "mcp__alpha__fixture_tool".to_string(),
+                "MCPTool".to_string(),
+            ])
+            .expect("mcp tools should be allow-listable")
+            .expect("allow-list should exist");
+        assert!(allowed.contains("mcp__alpha__fixture_tool"));
         assert!(allowed.contains("MCPTool"));
 
         let mut executor = CliToolExecutor::new(

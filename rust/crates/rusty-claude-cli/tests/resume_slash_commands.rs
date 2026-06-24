@@ -390,7 +390,7 @@ fn resumed_version_command_emits_structured_json() {
     assert_eq!(parsed["kind"], "version");
     assert!(parsed["version"].as_str().is_some());
     assert!(parsed["git_sha"].as_str().is_some());
-    assert!(parsed["target"].as_str().is_some());
+    assert!(parsed["build_target"].as_str().is_some());
 }
 
 #[test]

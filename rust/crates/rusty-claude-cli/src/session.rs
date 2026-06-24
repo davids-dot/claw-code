@@ -132,7 +132,9 @@ pub(crate) fn create_managed_session_handle(
     })
 }
 
-pub(crate) fn resolve_session_reference(reference: &str) -> Result<SessionHandle, Box<dyn std::error::Error>> {
+pub(crate) fn resolve_session_reference(
+    reference: &str,
+) -> Result<SessionHandle, Box<dyn std::error::Error>> {
     let handle = current_session_store()?
         .resolve_reference(reference)
         .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?;
@@ -142,17 +144,22 @@ pub(crate) fn resolve_session_reference(reference: &str) -> Result<SessionHandle
     })
 }
 
-pub(crate) fn resolve_managed_session_path(session_id: &str) -> Result<PathBuf, Box<dyn std::error::Error>> {
+pub(crate) fn resolve_managed_session_path(
+    session_id: &str,
+) -> Result<PathBuf, Box<dyn std::error::Error>> {
     current_session_store()?
         .resolve_managed_path(session_id)
         .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)
 }
 
-pub(crate) fn list_managed_sessions() -> Result<Vec<ManagedSessionSummary>, Box<dyn std::error::Error>> {
+pub(crate) fn list_managed_sessions(
+) -> Result<Vec<ManagedSessionSummary>, Box<dyn std::error::Error>> {
     let store = current_session_store()?;
-    let sessions = store.list_sessions().map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?;
+    let sessions = store
+        .list_sessions()
+        .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?;
     let panes = discover_tmux_panes();
-    
+
     Ok(sessions
         .into_iter()
         .map(|session| {
@@ -171,11 +178,14 @@ pub(crate) fn list_managed_sessions() -> Result<Vec<ManagedSessionSummary>, Box<
         .collect())
 }
 
-pub(crate) fn latest_managed_session() -> Result<ManagedSessionSummary, Box<dyn std::error::Error>> {
+pub(crate) fn latest_managed_session() -> Result<ManagedSessionSummary, Box<dyn std::error::Error>>
+{
     let store = current_session_store()?;
-    let session = store.latest_session().map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?;
+    let session = store
+        .latest_session()
+        .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?;
     let lifecycle = classify_session_lifecycle_for(&session.path);
-    
+
     Ok(ManagedSessionSummary {
         id: session.id,
         path: session.path,
@@ -335,7 +345,9 @@ pub(crate) fn git_worktree_is_dirty(workspace: &Path) -> bool {
         .is_some_and(|output| !output.stdout.is_empty())
 }
 
-pub(crate) fn render_session_list(active_session_id: &str) -> Result<String, Box<dyn std::error::Error>> {
+pub(crate) fn render_session_list(
+    active_session_id: &str,
+) -> Result<String, Box<dyn std::error::Error>> {
     let sessions = list_managed_sessions()?;
     let mut lines = vec![
         "Sessions".to_string(),
@@ -413,5 +425,3 @@ pub(crate) fn session_clear_backup_path(session_path: &Path) -> PathBuf {
         .unwrap_or("session.jsonl");
     session_path.with_file_name(format!("{file_name}.before-clear-{timestamp}.bak"))
 }
-
-

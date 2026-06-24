@@ -13,9 +13,9 @@ use tools::GlobalToolRegistry;
 
 use crate::build_runtime_plugin_state_with_loader;
 use crate::constants::*;
+use crate::formatting::{full_help_text, render_help_topic, render_version_report};
 use crate::model::*;
 use crate::runtime_builder::build_system_prompt;
-use crate::formatting::{render_help_topic, render_version_report, full_help_text};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum CliAction {
@@ -158,9 +158,8 @@ impl CliOutputFormat {
 
 #[allow(clippy::too_many_lines)]
 pub(crate) fn parse_args(args: &[String]) -> Result<CliAction, String> {
-
     let mut model = DEFAULT_MODEL.to_string();
-    
+
     // #148: when user passes --model/--model=, capture the raw input so we
     // can attribute source: "flag" later. None means no flag was supplied.
     let mut model_flag_raw: Option<String> = None;
@@ -703,7 +702,10 @@ pub(crate) fn removed_auth_surface_error(command_name: &str) -> String {
     )
 }
 
-pub(crate) fn parse_acp_args(args: &[String], output_format: CliOutputFormat) -> Result<CliAction, String> {
+pub(crate) fn parse_acp_args(
+    args: &[String],
+    output_format: CliOutputFormat,
+) -> Result<CliAction, String> {
     match args {
         [] => Ok(CliAction::Acp { output_format }),
         [subcommand] if subcommand == "serve" => Ok(CliAction::Acp { output_format }),
@@ -976,8 +978,6 @@ pub(crate) fn levenshtein_distance(left: &str, right: &str) -> usize {
     previous[right_chars.len()]
 }
 
-
-
 pub(crate) fn normalize_allowed_tools(values: &[String]) -> Result<Option<AllowedToolSet>, String> {
     if values.is_empty() {
         return Ok(None);
@@ -1049,8 +1049,6 @@ pub(crate) fn config_permission_mode_for_current_dir() -> Option<PermissionMode>
         .map(permission_mode_from_resolved)
 }
 
-
-
 pub(crate) fn filter_tool_specs(
     tool_registry: &GlobalToolRegistry,
     allowed_tools: Option<&AllowedToolSet>,
@@ -1100,7 +1098,10 @@ pub(crate) fn parse_system_prompt_args(
     })
 }
 
-pub(crate) fn parse_export_args(args: &[String], output_format: CliOutputFormat) -> Result<CliAction, String> {
+pub(crate) fn parse_export_args(
+    args: &[String],
+    output_format: CliOutputFormat,
+) -> Result<CliAction, String> {
     let mut session_reference = LATEST_SESSION_REFERENCE.to_string();
     let mut output_path: Option<PathBuf> = None;
     let mut index = 0;
@@ -1182,7 +1183,10 @@ pub(crate) fn parse_dump_manifests_args(
     })
 }
 
-pub(crate) fn parse_resume_args(args: &[String], output_format: CliOutputFormat) -> Result<CliAction, String> {
+pub(crate) fn parse_resume_args(
+    args: &[String],
+    output_format: CliOutputFormat,
+) -> Result<CliAction, String> {
     let (session_path, command_tokens): (PathBuf, &[String]) = match args.first() {
         None => (PathBuf::from(LATEST_SESSION_REFERENCE), &[]),
         Some(first) if looks_like_slash_command_token(first) => {
@@ -1385,7 +1389,9 @@ pub(crate) fn slash_command_completion_candidates_with_sessions(
     completions.into_iter().collect()
 }
 
-pub(crate) fn run_worker_state(output_format: CliOutputFormat) -> Result<(), Box<dyn std::error::Error>> {
+pub(crate) fn run_worker_state(
+    output_format: CliOutputFormat,
+) -> Result<(), Box<dyn std::error::Error>> {
     let cwd = env::current_dir()?;
     let state_path = cwd.join(".claw").join("worker-state.json");
     if !state_path.exists() {
@@ -1526,7 +1532,7 @@ pub(crate) fn print_bootstrap_plan(
 
 fn bootstrap_plan_json_value() -> serde_json::Value {
     serde_json::json!({
-        "kind": "bootstrap_plan",
+        "kind": "bootstrap-plan",
         "phases": [],
         "message": "the bootstrap plan surface is not implemented in this build yet.",
     })
@@ -1546,7 +1552,7 @@ pub(crate) fn print_system_prompt(
             println!(
                 "{}",
                 serde_json::to_string_pretty(&serde_json::json!({
-                    "kind": "system_prompt",
+                    "kind": "system-prompt",
                     "prompt": prompt,
                 }))?
             );
@@ -1555,7 +1561,9 @@ pub(crate) fn print_system_prompt(
     Ok(())
 }
 
-pub(crate) fn print_version(output_format: CliOutputFormat) -> Result<(), Box<dyn std::error::Error>> {
+pub(crate) fn print_version(
+    output_format: CliOutputFormat,
+) -> Result<(), Box<dyn std::error::Error>> {
     match output_format {
         CliOutputFormat::Text => {
             println!("{}", render_version_report());
@@ -1603,4 +1611,3 @@ pub(crate) fn print_connected_line(model: &str) -> String {
     };
     format!("\x1b[2mConnected to {provider} ({model})\x1b[0m")
 }
-

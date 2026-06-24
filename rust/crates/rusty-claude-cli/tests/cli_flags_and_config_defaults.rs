@@ -97,7 +97,7 @@ fn slash_command_names_match_known_commands_and_suggest_nearby_unknown_ones() {
         String::from_utf8_lossy(&unknown_output.stderr)
     );
     let stderr = String::from_utf8(unknown_output.stderr).expect("stderr should be utf8");
-    assert!(stderr.contains("unknown slash command outside the REPL: /zstats"));
+    assert!(stderr.contains("unknown slash command: /zstats"));
     assert!(stderr.contains("Did you mean"));
     assert!(stderr.contains("/status"));
 
@@ -122,7 +122,7 @@ fn omc_namespaced_slash_commands_surface_a_targeted_compatibility_hint() {
         String::from_utf8_lossy(&output.stderr)
     );
     let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
-    assert!(stderr.contains("unknown slash command outside the REPL: /oh-my-claudecode:hud"));
+    assert!(stderr.contains("unknown slash command: /oh-my-claudecode:hud"));
     assert!(stderr.contains("Claude Code/OMC plugin command"));
     assert!(stderr.contains("does not yet load plugin slash commands"));
 
