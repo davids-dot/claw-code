@@ -5,7 +5,9 @@ use runtime::{ConfigLoader, ConfigSource, ProjectContext};
 use serde_json;
 use std::env;
 
-pub(crate) fn render_config_report(section: Option<&str>) -> Result<String, Box<dyn std::error::Error>> {
+pub(crate) fn render_config_report(
+    section: Option<&str>,
+) -> Result<String, Box<dyn std::error::Error>> {
     let cwd = env::current_dir()?;
     let loader = ConfigLoader::default_for(&cwd);
     let discovered = loader.discover();
@@ -161,7 +163,7 @@ pub(crate) fn render_memory_json() -> Result<serde_json::Value, Box<dyn std::err
         .instruction_files
         .iter()
         .map(|f| {
-           serde_json::json!({
+            serde_json::json!({
                 "path": f.path.display().to_string(),
                 "lines": f.content.lines().count(),
                 "preview": f.content.lines().next().unwrap_or("").trim(),

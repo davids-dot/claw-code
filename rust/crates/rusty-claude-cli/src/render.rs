@@ -1068,4 +1068,3 @@ mod tests {
         assert!(output.contains("Working"));
     }
 }
-

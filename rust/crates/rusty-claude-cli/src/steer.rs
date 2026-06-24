@@ -87,9 +87,6 @@ mod tests {
         }
         let mut drained = steer_drain(&queue);
         drained.sort();
-        assert_eq!(
-            drained,
-            vec!["steer-0", "steer-1", "steer-2", "steer-3"]
-        );
+        assert_eq!(drained, vec!["steer-0", "steer-1", "steer-2", "steer-3"]);
     }
 }

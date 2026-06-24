@@ -1,19 +1,17 @@
-use std::path::Path;
-use std::process::Command;
-use std::env;
-use std::time::UNIX_EPOCH;
-use runtime::{Session, TokenUsage};
-use commands::render_slash_command_help_filtered;
-use crate::constants::*;
-use crate::models::*;
-use crate::live_cli::PromptHistoryEntry;
-use crate::args::LocalHelpTopic;
-use crate::omc_compatibility_note_for_unknown_slash_command;
-use crate::render::TerminalRenderer;
 use super::helpers::*;
 use super::tools::format_tool_result;
-
-
+use crate::args::LocalHelpTopic;
+use crate::constants::*;
+use crate::live_cli::PromptHistoryEntry;
+use crate::models::*;
+use crate::omc_compatibility_note_for_unknown_slash_command;
+use crate::render::TerminalRenderer;
+use commands::render_slash_command_help_filtered;
+use runtime::{Session, TokenUsage};
+use std::env;
+use std::path::Path;
+use std::process::Command;
+use std::time::UNIX_EPOCH;
 
 pub(crate) fn format_model_report(model: &str, message_count: usize, turns: u32) -> String {
     format!(
@@ -28,7 +26,11 @@ Usage
     )
 }
 
-pub(crate) fn format_model_switch_report(previous: &str, next: &str, message_count: usize) -> String {
+pub(crate) fn format_model_switch_report(
+    previous: &str,
+    next: &str,
+    message_count: usize,
+) -> String {
     format!(
         "Model updated
   Previous         {previous}
@@ -301,8 +303,11 @@ pub(crate) fn print_help_to(out: &mut impl std::io::Write) -> std::io::Result<()
     Ok(())
 }
 
-
-pub(crate) fn format_compact_report(removed: usize, resulting_messages: usize, skipped: bool) -> String {
+pub(crate) fn format_compact_report(
+    removed: usize,
+    resulting_messages: usize,
+    skipped: bool,
+) -> String {
     if skipped {
         format!(
             "Compact
@@ -460,7 +465,9 @@ pub(crate) fn render_teleport_report(target: &str) -> Result<String, Box<dyn std
     Ok(lines.join("\n"))
 }
 
-pub(crate) fn render_last_tool_debug_report(session: &Session) -> Result<String, Box<dyn std::error::Error>> {
+pub(crate) fn render_last_tool_debug_report(
+    session: &Session,
+) -> Result<String, Box<dyn std::error::Error>> {
     use runtime::ContentBlock;
     let last_tool_use = session
         .messages
@@ -600,8 +607,8 @@ pub(crate) fn render_prompt_history_report(entries: &[PromptHistoryEntry], limit
 }
 
 pub(crate) fn render_export_text(session: &Session) -> String {
-    use runtime::MessageRole;
     use runtime::ContentBlock;
+    use runtime::MessageRole;
 
     let mut lines = vec!["# Conversation Export".to_string(), String::new()];
     for (index, message) in session.messages.iter().enumerate() {
@@ -649,10 +656,14 @@ pub(crate) fn render_version_report() -> String {
     )
 }
 
-pub(crate) fn render_session_markdown(session: &Session, session_id: &str, session_path: &Path) -> String {
-    use runtime::{MessageRole, ContentBlock};
+pub(crate) fn render_session_markdown(
+    session: &Session,
+    session_id: &str,
+    session_path: &Path,
+) -> String {
     use super::tools::short_tool_id;
     use super::tools::summarize_tool_payload_for_markdown;
+    use runtime::{ContentBlock, MessageRole};
 
     let mut lines = vec![
         "# Conversation Export".to_string(),

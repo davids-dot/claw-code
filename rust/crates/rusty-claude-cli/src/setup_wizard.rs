@@ -71,7 +71,9 @@ fn load_current_provider_config() -> Option<RuntimeProviderConfig> {
     None
 }
 
-fn select_provider(_current: &Option<RuntimeProviderConfig>) -> Result<String, Box<dyn std::error::Error>> {
+fn select_provider(
+    _current: &Option<RuntimeProviderConfig>,
+) -> Result<String, Box<dyn std::error::Error>> {
     println!("Available providers:");
     for (id, name, _) in PROVIDERS {
         println!("  {}. {}", id, name);
@@ -93,7 +95,10 @@ fn select_provider(_current: &Option<RuntimeProviderConfig>) -> Result<String, B
     }
 }
 
-fn input_api_key(provider: &str, current: &Option<RuntimeProviderConfig>) -> Result<String, Box<dyn std::error::Error>> {
+fn input_api_key(
+    provider: &str,
+    current: &Option<RuntimeProviderConfig>,
+) -> Result<String, Box<dyn std::error::Error>> {
     let env_var = API_KEY_ENV_VARS
         .iter()
         .find(|(p, _)| *p == provider)
@@ -102,9 +107,12 @@ fn input_api_key(provider: &str, current: &Option<RuntimeProviderConfig>) -> Res
 
     let current_value = current.as_ref().and_then(|c| c.api_key()).unwrap_or("");
 
-println!("\nAPI Key (from {} environment variable):", env_var);
+    println!("\nAPI Key (from {} environment variable):", env_var);
     if !current_value.is_empty() {
-        println!("  Current: {}...", &current_value[..std::cmp::min(8, current_value.len())]);
+        println!(
+            "  Current: {}...",
+            &current_value[..std::cmp::min(8, current_value.len())]
+        );
     }
 
     loop {
@@ -130,7 +138,10 @@ println!("\nAPI Key (from {} environment variable):", env_var);
     }
 }
 
-fn input_base_url(provider: &str, current: &Option<RuntimeProviderConfig>) -> Result<String, Box<dyn std::error::Error>> {
+fn input_base_url(
+    provider: &str,
+    current: &Option<RuntimeProviderConfig>,
+) -> Result<String, Box<dyn std::error::Error>> {
     let default_url = DEFAULT_BASE_URLS
         .iter()
         .find(|(p, _)| *p == provider)
@@ -163,7 +174,10 @@ fn input_base_url(provider: &str, current: &Option<RuntimeProviderConfig>) -> Re
     }
 }
 
-fn input_model(provider: &str, current: &Option<RuntimeProviderConfig>) -> Result<String, Box<dyn std::error::Error>> {
+fn input_model(
+    provider: &str,
+    current: &Option<RuntimeProviderConfig>,
+) -> Result<String, Box<dyn std::error::Error>> {
     let available_models = PROVIDER_MODELS
         .iter()
         .find(|(p, _)| *p == provider)

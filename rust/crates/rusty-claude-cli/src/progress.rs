@@ -288,7 +288,10 @@ pub(crate) fn describe_tool_progress(name: &str, input: &str) -> String {
             if command.is_empty() {
                 "running shell command".to_string()
             } else {
-                format!("command {}", crate::truncate_for_summary(command.trim(), 100))
+                format!(
+                    "command {}",
+                    crate::truncate_for_summary(command.trim(), 100)
+                )
             }
         }
         "read_file" | "Read" => format!("reading {}", crate::extract_tool_path(&parsed)),

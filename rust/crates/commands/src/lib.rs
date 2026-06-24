@@ -1232,7 +1232,7 @@ impl SlashCommand {
             Self::Config { .. } => "/config",
             Self::Memory { .. } => "/memory",
             Self::History { .. } => "/history",
-Self::Steer { .. } => "/steer",
+            Self::Steer { .. } => "/steer",
             Self::Diff => "/diff",
             Self::Status => "/status",
             Self::Stats => "/stats",
@@ -1499,13 +1499,13 @@ pub fn validate_slash_command_input(
         "tag" => SlashCommand::Tag { label: remainder },
         "output-style" => SlashCommand::OutputStyle { style: remainder },
         "add-dir" => SlashCommand::AddDir { path: remainder },
-"history" => SlashCommand::History {
-count: optional_single_arg(command, &args, "[count]")?,
-},
-"steer" => SlashCommand::Steer {
-text: remainder.unwrap_or_default().to_string(),
-},
-other => SlashCommand::Unknown(other.to_string()),
+        "history" => SlashCommand::History {
+            count: optional_single_arg(command, &args, "[count]")?,
+        },
+        "steer" => SlashCommand::Steer {
+            text: remainder.unwrap_or_default().to_string(),
+        },
+        other => SlashCommand::Unknown(other.to_string()),
     }))
 }
 fn validate_no_args(command: &str, args: &[&str]) -> Result<(), SlashCommandParseError> {
@@ -4167,9 +4167,9 @@ pub fn handle_slash_command(
         | SlashCommand::Tag { .. }
         | SlashCommand::OutputStyle { .. }
         | SlashCommand::AddDir { .. }
-| SlashCommand::History { .. }
-| SlashCommand::Steer { .. }
-| SlashCommand::Unknown(_) => None,
+        | SlashCommand::History { .. }
+        | SlashCommand::Steer { .. }
+        | SlashCommand::Unknown(_) => None,
     }
 }
 

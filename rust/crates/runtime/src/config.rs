@@ -108,7 +108,12 @@ pub struct RuntimeProviderConfig {
 
 impl RuntimeProviderConfig {
     #[must_use]
-    pub fn new(kind: Option<String>, api_key: Option<String>, base_url: Option<String>, model: Option<String>) -> Self {
+    pub fn new(
+        kind: Option<String>,
+        api_key: Option<String>,
+        base_url: Option<String>,
+        model: Option<String>,
+    ) -> Self {
         Self {
             kind,
             api_key,
@@ -2195,13 +2200,12 @@ mod tests {
     }
 }
 
-
 fn read_settings_root(path: &Path) -> BTreeMap<String, JsonValue> {
     let content = fs::read_to_string(path).unwrap_or_else(|_| "{}".to_string());
     if content.trim().is_empty() {
         return BTreeMap::new();
     }
-    
+
     match JsonValue::parse(&content) {
         Ok(JsonValue::Object(root)) => root,
         _ => BTreeMap::new(),
@@ -2211,7 +2215,7 @@ fn read_settings_root(path: &Path) -> BTreeMap<String, JsonValue> {
 fn write_settings_root(path: &Path, root: &BTreeMap<String, JsonValue>) -> Result<(), ConfigError> {
     let json_value = JsonValue::Object(root.clone());
     let content = json_value.render();
-    
+
     fs::write(path, content).map_err(ConfigError::Io)?;
     Ok(())
 }
@@ -2227,19 +2231,19 @@ pub fn save_user_provider_settings(config: &RuntimeProviderConfig) -> Result<(),
     let mut root = read_settings_root(&settings_path);
 
     let mut provider = BTreeMap::new();
-    
+
     if let Some(kind) = &config.kind {
         provider.insert("kind".to_string(), JsonValue::String(kind.clone()));
     }
-    
+
     if let Some(api_key) = &config.api_key {
         provider.insert("apiKey".to_string(), JsonValue::String(api_key.clone()));
     }
-    
+
     if let Some(base_url) = &config.base_url {
         provider.insert("baseUrl".to_string(), JsonValue::String(base_url.clone()));
     }
-    
+
     if let Some(model) = &config.model {
         provider.insert("model".to_string(), JsonValue::String(model.clone()));
     }
@@ -2271,13 +2275,13 @@ pub fn clear_user_provider_settings() -> Result<(), ConfigError> {
 
     let mut root = read_settings_root(&settings_path);
     root.remove("provider");
-    
+
     if root.is_empty() {
         let _ = fs::remove_file(&settings_path);
     } else {
         write_settings_root(&settings_path, &root)?;
     }
-    
+
     Ok(())
 }
 

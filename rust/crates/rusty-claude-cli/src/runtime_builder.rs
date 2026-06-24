@@ -60,7 +60,10 @@ impl BuiltRuntime {
         }
     }
 
-    pub(crate) fn with_hook_abort_signal(mut self, hook_abort_signal: runtime::HookAbortSignal) -> Self {
+    pub(crate) fn with_hook_abort_signal(
+        mut self,
+        hook_abort_signal: runtime::HookAbortSignal,
+    ) -> Self {
         let runtime = self
             .runtime
             .take()
@@ -244,7 +247,10 @@ impl RuntimeMcpState {
         serde_json::to_string_pretty(&result).map_err(|error| ToolError::new(error.to_string()))
     }
 
-    pub(crate) fn list_resources_for_server(&mut self, server_name: &str) -> Result<String, ToolError> {
+    pub(crate) fn list_resources_for_server(
+        &mut self,
+        server_name: &str,
+    ) -> Result<String, ToolError> {
         let result = self
             .runtime
             .block_on(self.manager.list_resources(server_name))
@@ -292,7 +298,11 @@ impl RuntimeMcpState {
         .map_err(|error| ToolError::new(error.to_string()))
     }
 
-    pub(crate) fn read_resource(&mut self, server_name: &str, uri: &str) -> Result<String, ToolError> {
+    pub(crate) fn read_resource(
+        &mut self,
+        server_name: &str,
+        uri: &str,
+    ) -> Result<String, ToolError> {
         let result = self
             .runtime
             .block_on(self.manager.read_resource(server_name, uri))
@@ -333,11 +343,9 @@ pub(crate) fn mcp_runtime_tool_definition(tool: &runtime::ManagedMcpTool) -> Run
                 .clone()
                 .unwrap_or_else(|| format!("Invoke MCP tool `{}`.", tool.qualified_name)),
         ),
-        input_schema: tool
-            .tool
-            .input_schema
-            .clone()
-            .unwrap_or_else(|| serde_json::json!({ "type": "object", "additionalProperties": true })),
+        input_schema: tool.tool.input_schema.clone().unwrap_or_else(
+            || serde_json::json!({ "type": "object", "additionalProperties": true }),
+        ),
         required_permission: permission_mode_for_mcp_tool(&tool.tool),
     }
 }
@@ -349,7 +357,7 @@ pub(crate) fn mcp_wrapper_tool_definitions() -> Vec<RuntimeToolDefinition> {
             description: Some(
                 "Call a configured MCP tool by its qualified name and JSON arguments.".to_string(),
             ),
-            input_schema:serde_json::json!({
+            input_schema: serde_json::json!({
                 "type": "object",
                 "properties": {
                     "qualifiedName": { "type": "string" },
@@ -366,7 +374,7 @@ pub(crate) fn mcp_wrapper_tool_definitions() -> Vec<RuntimeToolDefinition> {
                 "List MCP resources from one configured server or from every connected server."
                     .to_string(),
             ),
-            input_schema:serde_json::json!({
+            input_schema: serde_json::json!({
                 "type": "object",
                 "properties": {
                     "server": { "type": "string" }
@@ -378,7 +386,7 @@ pub(crate) fn mcp_wrapper_tool_definitions() -> Vec<RuntimeToolDefinition> {
         RuntimeToolDefinition {
             name: "ReadMcpResourceTool".to_string(),
             description: Some("Read a specific MCP resource from a configured server.".to_string()),
-            input_schema:serde_json::json!({
+            input_schema: serde_json::json!({
                 "type": "object",
                 "properties": {
                     "server": { "type": "string" },
@@ -446,7 +454,10 @@ impl HookAbortMonitor {
         })
     }
 
-    pub(crate) fn spawn_with_waiter<F>(abort_signal: runtime::HookAbortSignal, wait_for_interrupt: F) -> Self
+    pub(crate) fn spawn_with_waiter<F>(
+        abort_signal: runtime::HookAbortSignal,
+        wait_for_interrupt: F,
+    ) -> Self
     where
         F: FnOnce(Receiver<()>, runtime::HookAbortSignal) + Send + 'static,
     {
@@ -478,7 +489,8 @@ pub(crate) fn build_system_prompt() -> Result<Vec<String>, Box<dyn std::error::E
     )?)
 }
 
-pub(crate) fn build_runtime_plugin_state() -> Result<RuntimePluginState, Box<dyn std::error::Error>> {
+pub(crate) fn build_runtime_plugin_state() -> Result<RuntimePluginState, Box<dyn std::error::Error>>
+{
     let cwd = env::current_dir()?;
     let loader = ConfigLoader::default_for(&cwd);
     let runtime_config = loader.load()?;
@@ -545,7 +557,9 @@ pub(crate) fn resolve_plugin_path(cwd: &Path, config_home: &Path, value: &str) -
     }
 }
 
-pub(crate) fn runtime_hook_config_from_plugin_hooks(hooks: PluginHooks) -> runtime::RuntimeHookConfig {
+pub(crate) fn runtime_hook_config_from_plugin_hooks(
+    hooks: PluginHooks,
+) -> runtime::RuntimeHookConfig {
     runtime::RuntimeHookConfig::new(
         hooks.pre_tool_use,
         hooks.post_tool_use,

@@ -1,20 +1,17 @@
 use std::io::{self, Write};
 
+use crate::render::{MarkdownStreamState, TerminalRenderer};
 use api::{
     detect_provider_kind, resolve_startup_auth_source, AnthropicClient, AuthSource,
     ContentBlockDelta, MessageRequest, PromptCache, ProviderClient as ApiProviderClient,
     ProviderKind, StreamEvent as ApiStreamEvent, ToolChoice,
 };
-use crate::render::{MarkdownStreamState, TerminalRenderer};
 use runtime::{ApiClient, ApiRequest, AssistantEvent, MessageRole, RuntimeError};
 use tools::GlobalToolRegistry;
 
 use crate::constants::*;
 use crate::model::max_tokens_for_model;
-use crate::{
-    format_tool_call_start, push_output_block,
-    render_thinking_block_summary,
-};
+use crate::{format_tool_call_start, push_output_block, render_thinking_block_summary};
 
 use crate::InternalPromptProgressReporter;
 
@@ -91,9 +88,9 @@ impl ApiClient for AnthropicRuntimeClient {
             max_tokens: max_tokens_for_model(&self.model),
             messages: crate::convert_messages(&request.messages),
             system: (!request.system_prompt.is_empty()).then(|| request.system_prompt.join("\n\n")),
-            tools: self
-                .enable_tools
-                .then(|| crate::filter_tool_specs(&self.tool_registry, self.allowed_tools.as_ref())),
+            tools: self.enable_tools.then(|| {
+                crate::filter_tool_specs(&self.tool_registry, self.allowed_tools.as_ref())
+            }),
             tool_choice: self.enable_tools.then_some(ToolChoice::Auto),
             stream: true,
             reasoning_effort: self.reasoning_effort.clone(),
@@ -111,9 +108,7 @@ impl ApiClient for AnthropicRuntimeClient {
                     Ok(events) => return Ok(events),
                     Err(error)
                         if error.to_string().contains("post-tool stall")
-                            && attempt < max_attempts =>
-                    {
-                    }
+                            && attempt < max_attempts => {}
                     Err(error) => return Err(error),
                 }
             }
@@ -395,8 +390,7 @@ pub(crate) fn format_context_window_blocked_error(
     ));
     lines.push("  Fresh session    /clear --confirm".to_string());
     lines.push(
-        "  Reduce scope     remove large pasted context/files or ask for smaller slice"
-            .to_string(),
+        "  Reduce scope     remove large pasted context/files or ask for smaller slice".to_string(),
     );
     lines.push("  Retry            rerun after compacting or reducing request".to_string());
 

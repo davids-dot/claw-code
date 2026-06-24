@@ -1,10 +1,10 @@
 use crate::*;
+use ::tools::{execute_tool, mvp_tool_specs};
+use commands::SlashCommand;
+use serde_json::json;
 use std::env;
 use std::fs;
 use std::path::Path;
-use serde_json::json;
-use commands::SlashCommand;
-use ::tools::{mvp_tool_specs, execute_tool};
 
 impl LiveCli {
     #[allow(clippy::too_many_lines)]
@@ -778,7 +778,10 @@ impl LiveCli {
         Ok(())
     }
 
-    pub(crate) fn run_issue(&self, context: Option<&str>) -> Result<(), Box<dyn std::error::Error>> {
+    pub(crate) fn run_issue(
+        &self,
+        context: Option<&str>,
+    ) -> Result<(), Box<dyn std::error::Error>> {
         println!("{}", format_issue_report(context));
         Ok(())
     }
@@ -1164,7 +1167,7 @@ pub(crate) fn run_resume_command(
         | SlashCommand::Tag { .. }
         | SlashCommand::OutputStyle { .. }
         | SlashCommand::AddDir { .. }
-| SlashCommand::Steer { .. } => Err("unsupported resumed slash command".into()),
+        | SlashCommand::Steer { .. } => Err("unsupported resumed slash command".into()),
     }
 }
 

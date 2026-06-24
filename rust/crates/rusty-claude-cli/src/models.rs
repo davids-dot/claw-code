@@ -53,7 +53,7 @@ impl SessionLifecycleSummary {
     }
 
     pub(crate) fn json_value(&self) -> serde_json::Value {
-       serde_json::json!({
+        serde_json::json!({
             "kind": self.kind.as_str(),
             "pane_id": self.pane_id,
             "pane_command": self.pane_command,
@@ -129,5 +129,3 @@ pub(crate) struct ManagedSessionSummary {
     pub(crate) branch_name: Option<String>,
     pub(crate) lifecycle: SessionLifecycleSummary,
 }
-
-
